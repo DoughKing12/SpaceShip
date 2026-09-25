@@ -793,6 +793,35 @@ static void pickPhoto() {
     }
 }
 
+static bool g_fullscreen = false;
+static RECT g_restoreRect = { 0, 0, 0, 0 };
+
+static void toggleFullscreen() {
+    if (!g_hwnd) return;
+    if (!g_fullscreen) {
+        GetWindowRect(g_hwnd, &g_restoreRect);
+        MONITORINFO mi;
+        memset(&mi, 0, sizeof(mi));
+        mi.cbSize = sizeof(mi);
+        GetMonitorInfo(MonitorFromWindow(g_hwnd, MONITOR_DEFAULTTONEAREST), &mi);
+        SetWindowLong(g_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+        SetWindowPos(g_hwnd, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top,
+                     mi.rcMonitor.right - mi.rcMonitor.left,
+                     mi.rcMonitor.bottom - mi.rcMonitor.top,
+                     SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        g_fullscreen = true;
+        while (ShowCursor(FALSE) >= 0) {}
+    } else {
+        SetWindowLong(g_hwnd, GWL_STYLE, (WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX)) | WS_VISIBLE);
+        SetWindowPos(g_hwnd, HWND_TOP, g_restoreRect.left, g_restoreRect.top,
+                     g_restoreRect.right - g_restoreRect.left,
+                     g_restoreRect.bottom - g_restoreRect.top,
+                     SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        g_fullscreen = false;
+        while (ShowCursor(TRUE) < 0) {}
+    }
+}
+
 static void spawnParticle(double x, double y, double vx, double vy, double life, double size, COLORREF col, int kind) {
     Particle p;
     p.x = x; p.y = y; p.vx = vx; p.vy = vy;
@@ -1244,6 +1273,9 @@ static void frameInput() {
     bool spaceDown = keys[VK_SPACE];
     bool spaceEdge = spaceDown && !spacePrev;
     spacePrev = spaceDown;
+    bool f11Edge = keys[VK_F11] && !keysPrev[VK_F11];
+
+    if (f11Edge) toggleFullscreen();
 
     if (mEdge) {
         muted = !muted;
@@ -1255,6 +1287,7 @@ static void frameInput() {
     if (jEdge && state == ST_PLAY && !paused) jumpEdgePending = true;
 
     if (state == ST_MENU) {
+        if (escEdge && g_fullscreen) toggleFullscreen();
         if (btnClick(Btn{ 330, 250, 300, 62 })) { state = ST_SELECT; playSfx(SFX_CLICK); }
         else if (btnClick(Btn{ 330, 330, 300, 62 })) { state = ST_SHOP; shopSel = save.equipped; playSfx(SFX_CLICK); }
         else if (spaceEdge || enterEdge) { state = ST_SELECT; playSfx(SFX_CLICK); }
@@ -2086,7 +2119,7 @@ static void drawMenuUI(HDC hdc) {
     drawTextC(hdc, "50 LEVELS  -  SHOP  -  SHIP / BALL / UFO", WINDOW_W / 2, 158, 22, RGB(230, 235, 250));
     drawBtn(hdc, Btn{ 330, 250, 300, 62 }, "PLAY", 34, RGB(70, 220, 130));
     drawBtn(hdc, Btn{ 330, 330, 300, 62 }, "SHOP", 34, RGB(80, 170, 255));
-    drawTextC(hdc, "SPACE / CLICK - JUMP    ESC - PAUSE    M - MUTE", WINDOW_W / 2, 424, 18, RGB(215, 220, 240));
+    drawTextC(hdc, "SPACE / CLICK - JUMP    ESC - PAUSE    M - MUTE    F11 - FULLSCREEN", WINDOW_W / 2, 424, 18, RGB(215, 220, 240));
     drawTextC(hdc, "HOLD TO KEEP JUMPING - BLUE ORBS FLIP GRAVITY", WINDOW_W / 2, 452, 18, RGB(215, 220, 240));
     drawShardCount(hdc, WINDOW_W - 150, 20);
     int done = 0;
@@ -2287,6 +2320,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         clickEdge = true;
         mx = (short)LOWORD(lParam);
         my = (short)HIWORD(lParam);
+        if (g_fullscreen) {
+            RECT frc;
+            GetClientRect(hwnd, &frc);
+            if (frc.right > 0 && frc.bottom > 0) {
+                mx = mx * WINDOW_W / frc.right;
+                my = my * WINDOW_H / frc.bottom;
+            }
+        }
         return 0;
     case WM_LBUTTONUP:
         mouseDown = false;
@@ -2294,6 +2335,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_MOUSEMOVE:
         mx = (short)LOWORD(lParam);
         my = (short)HIWORD(lParam);
+        if (g_fullscreen) {
+            RECT frc;
+            GetClientRect(hwnd, &frc);
+            if (frc.right > 0 && frc.bottom > 0) {
+                mx = mx * WINDOW_W / frc.right;
+                my = my * WINDOW_H / frc.bottom;
+            }
+        }
         return 0;
     case WM_KILLFOCUS:
         memset(keys, 0, sizeof(keys));
@@ -2401,7 +2450,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         camX = (state == ST_PLAY || state == ST_DEAD || state == ST_WIN) ? (pl.x - SCREEN_PX) : fmod(totalTime * 170.0, 1000000.0);
         draw(memDC);
-        BitBlt(hdc, 0, 0, WINDOW_W, WINDOW_H, memDC, 0, 0, SRCCOPY);
+        if (g_fullscreen) {
+            RECT frc;
+            GetClientRect(hwnd, &frc);
+            if (frc.right > 0 && frc.bottom > 0) {
+                SetStretchBltMode(hdc, HALFTONE);
+                SetBrushOrgEx(hdc, 0, 0, NULL);
+                StretchBlt(hdc, 0, 0, frc.right, frc.bottom, memDC, 0, 0, WINDOW_W, WINDOW_H, SRCCOPY);
+            }
+        } else {
+            BitBlt(hdc, 0, 0, WINDOW_W, WINDOW_H, memDC, 0, 0, SRCCOPY);
+        }
 
         QueryPerformanceCounter(&now);
         double taken = (double)(now.QuadPart - frameStart.QuadPart) / freq.QuadPart;
