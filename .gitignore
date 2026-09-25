@@ -22,4 +22,7 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+gd_frame.bmp
+geometry_dash_save.dat
+
 SpaceShip/

@@ -201,35 +201,61 @@ static void genChiptune(std::vector<double>& s, int bpm, double semi, int varian
     int total = (int)(SR * st * steps);
     s.assign(total + SR / 4, 0.0);
     double k = pow(2.0, semi / 12.0);
+    std::vector<double> duck(s.size(), 1.0);
     auto at = [&](int step) { return (int)(SR * st * step); };
+    auto markKick = [&](int p) {
+        int n = (int)(SR * 0.24);
+        for (int i = 0; i < n && p + i < (int)duck.size(); i++) {
+            double target = 0.40 + 0.60 * pow((double)i / (double)n, 0.65);
+            if (duck[p + i] > target) duck[p + i] = target;
+        }
+    };
     auto addKick = [&](int p) {
-        int n = (int)(SR * 0.14);
+        markKick(p);
+        int n = (int)(SR * 0.20);
         double ph = 0;
         for (int i = 0; i < n && p + i < (int)s.size(); i++) {
             double t = (double)i / SR;
-            double f = 48.0 + 120.0 * exp(-t * 45.0);
+            double f = 44.0 + 150.0 * exp(-t * 42.0);
             ph += 2.0 * PI * f / SR;
-            s[p + i] += sin(ph) * exp(-t * 26.0) * 0.8;
+            double body = sin(ph) * exp(-t * 21.0);
+            double click = (frand() * 2.0 - 1.0) * exp(-t * 480.0) * 0.55;
+            s[p + i] += (body * 0.95 + click) * 0.88;
         }
     };
     auto addSnare = [&](int p) {
-        int n = (int)(SR * 0.16);
-        double ph = 0;
+        int n = (int)(SR * 0.22);
+        double ph = 0, ph2 = 0;
         for (int i = 0; i < n && p + i < (int)s.size(); i++) {
             double t = (double)i / SR;
             double noise = frand() * 2.0 - 1.0;
             ph += 2.0 * PI * 190.0 / SR;
-            s[p + i] += (noise * 0.7 + sin(ph) * 0.3) * exp(-t * 22.0) * 0.5;
+            ph2 += 2.0 * PI * 330.0 / SR;
+            double tone = sin(ph) * 0.35 + sin(ph2) * 0.18;
+            s[p + i] += (noise * 0.78 + tone) * exp(-t * 17.0) * 0.56;
         }
     };
-    auto addHat = [&](int p, double vol) {
-        int n = (int)(SR * 0.045);
+    auto addClap = [&](int p) {
+        for (int r = 0; r < 3; r++) {
+            int q = p + (int)(SR * 0.009 * r);
+            int n = (int)(SR * 0.08);
+            double prev = 0;
+            for (int i = 0; i < n && q + i < (int)s.size(); i++) {
+                double noise = frand() * 2.0 - 1.0;
+                double hp = noise - prev;
+                prev = noise;
+                s[q + i] += hp * exp(-(double)i / SR * 50.0) * 0.30;
+            }
+        }
+    };
+    auto addHat = [&](int p, double vol, bool open) {
+        int n = (int)(SR * (open ? 0.15 : 0.045));
         double prev = 0;
         for (int i = 0; i < n && p + i < (int)s.size(); i++) {
             double noise = frand() * 2.0 - 1.0;
             double hp = noise - prev;
             prev = noise;
-            s[p + i] += hp * exp(-(double)i / SR * 90.0) * vol;
+            s[p + i] += hp * exp(-(double)i / SR * (open ? 24.0 : 95.0)) * vol;
         }
     };
     auto addBass = [&](int p, double f, double dur) {
@@ -237,9 +263,10 @@ static void genChiptune(std::vector<double>& s, int bpm, double semi, int varian
         double ph = 0;
         for (int i = 0; i < n && p + i < (int)s.size(); i++) {
             ph += f / SR;
+            double saw = 2.0 * fmod(ph, 1.0) - 1.0;
             double sq = fmod(ph, 1.0) < 0.5 ? 1.0 : -1.0;
-            double env = (i < 80 ? (double)i / 80.0 : 1.0) * (1.0 - (double)i / n * 0.35);
-            s[p + i] += (sq * 0.55 + sin(2.0 * PI * ph) * 0.25) * env * 0.5;
+            double env = (i < 90 ? (double)i / 90.0 : 1.0) * (1.0 - (double)i / n * 0.30);
+            s[p + i] += (saw * 0.30 + sq * 0.28 + sin(2.0 * PI * ph) * 0.38) * env * 0.52 * duck[p + i];
         }
     };
     auto addArp = [&](int p, double f, double dur) {
@@ -249,27 +276,59 @@ static void genChiptune(std::vector<double>& s, int bpm, double semi, int varian
             ph += f / SR;
             double sq = fmod(ph, 1.0) < 0.32 ? 1.0 : -1.0;
             double env = (i < 60 ? (double)i / 60.0 : 1.0) * (1.0 - (double)i / n * 0.5);
-            s[p + i] += sq * env * 0.14;
+            s[p + i] += sq * env * 0.13 * duck[p + i];
         }
     };
-    double roots[4] = { 110.0 * k, 110.0 * k, 87.31 * k, 98.0 * k };
-    double chord[4][3] = { { 440.0 * k, 523.25 * k, 659.25 * k }, { 440.0 * k, 523.25 * k, 659.25 * k },
-                           { 349.23 * k, 440.0 * k, 523.25 * k }, { 392.0 * k, 493.88 * k, 587.33 * k } };
+    auto addLead = [&](int p, double f, double dur) {
+        int n = (int)(SR * dur);
+        double ph = 0;
+        for (int i = 0; i < n && p + i < (int)s.size(); i++) {
+            double t = (double)i / SR;
+            double fv = f * (1.0 + 0.005 * sin(2.0 * PI * 6.5 * t));
+            ph += fv / SR;
+            double sq = fmod(ph, 1.0) < 0.46 ? 1.0 : -1.0;
+            double att = i < 260 ? (double)i / 260.0 : 1.0;
+            double env = att * (1.0 - (double)i / n * 0.50);
+            s[p + i] += (sq * 0.72 + sin(2.0 * PI * ph) * 0.28) * env * 0.175 * duck[p + i];
+        }
+    };
+    double roots[4] = { 110.0 * k, 87.31 * k, 65.41 * k, 98.0 * k };
+    double chord[4][3] = { { 440.0 * k, 523.25 * k, 659.25 * k }, { 349.23 * k, 440.0 * k, 523.25 * k },
+                           { 523.25 * k, 659.25 * k, 783.99 * k }, { 392.0 * k, 493.88 * k, 587.33 * k } };
+    const double scale[7] = { 0.0, 2.0, 3.0, 5.0, 7.0, 8.0, 10.0 };
+    int mel[4][8] = { { 4, 7, 6, 4, 2, 4, 2, 0 }, { 4, 5, 4, 2, 4, 5, 7, -1 },
+                      { 7, 6, 4, 6, 4, 2, 4, -1 }, { 6, 4, 6, 7, 6, 4, 2, 4 } };
+    auto degFreq = [&](int d, int oct) {
+        int idx = ((d % 7) + 7) % 7;
+        int up = d / 7;
+        double semi2 = scale[idx] + 12.0 * (double)(up + oct);
+        return 440.0 * k * pow(2.0, semi2 / 12.0);
+    };
     for (int b = 0; b < bars; b++) {
         int ci = b % 4;
+        int oct = (b >= 4) ? 1 : 0;
         for (int kk = 0; kk < 16; kk++) {
             int p = at(b * 16 + kk);
             bool kOn = (variant == 0) ? (kk % 4 == 0) : (kk % 4 == 0 || (variant == 2 && kk % 8 == 6));
             if (kOn) addKick(p);
-            if (kk == 4 || kk == 12) addSnare(p);
-            addHat(p, kk % 2 == 1 ? 0.10 : 0.05);
+            if (kk == 4 || kk == 12) {
+                addSnare(p);
+                if (variant == 2) addClap(p);
+            }
+            if (b == bars - 1 && kk >= 10 && kk % 2 == 0) addSnare(p);
+            addHat(p, kk % 2 == 1 ? 0.10 : 0.05, false);
+            if (variant >= 1 && kk == 14) addHat(p, 0.075, true);
             if (kk % 2 == 0) addBass(p, roots[ci], st * 2.0 * 0.85);
             int idx = (kk % 8 < 4) ? (kk % 4) : (3 - (kk % 4));
             if (variant != 1 || kk % 2 == 0) addArp(p, chord[ci][idx] * (kk >= 8 ? 2.0 : 1.0), st * 0.9);
+            if (kk % 2 == 0) {
+                int d = mel[ci][kk / 2];
+                if (d >= 0) addLead(p, degFreq(d, oct), st * 1.9);
+            }
         }
     }
     int d = (int)(SR * st * 3.0);
-    for (int i = d; i < (int)s.size(); i++) s[i] += 0.30 * s[i - d];
+    for (int i = d; i < (int)s.size(); i++) s[i] += 0.32 * s[i - d];
     double mx = 0;
     for (size_t i = 0; i < s.size(); i++) { double a = fabs(s[i]); if (a > mx) mx = a; }
     if (mx > 0) for (size_t i = 0; i < s.size(); i++) s[i] = s[i] / mx * 0.92;
@@ -417,8 +476,8 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
     int n = 0;
     auto add = [&](int id) { if (id != lastAtom) pool[n++] = id; };
     add(0); add(1); add(3);
-    if (tier >= 1) add(2);
-    if (tier >= 2) { add(4); add(5); add(6); add(12); }
+    if (tier >= 1) { add(2); add(4); }
+    if (tier >= 2) { add(5); add(6); add(12); }
     if (tier >= 3) { add(7); add(8); add(9); }
     if (tier >= 4) { add(10); add(11); }
     int pick = pool[rndR(0, n - 1)];
@@ -446,15 +505,15 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
 
 static void emitSpecial(int s, int len, int mode, int tier) {
     addBlock(s, 0, s + len, 1);
-    addPortal(mode, s + 2);
+    if (mode != 0) addPortal(mode, s + 2);
     int c = s + 9;
     int end = s + len - 7;
     if (mode == 1) {
         int i = 0;
         while (c < end) {
-            if (i % 2 == 0) { addSpike(c, ROWS - 1); if (tier >= 3 && rndR(0, 99) < 40) addSpike(c + 1, ROWS - 1); }
-            else { addSpikeD(c, 2); if (tier >= 3 && rndR(0, 99) < 40) addSpikeD(c + 1, 2); }
-            c += (tier >= 4 ? 7 : 8);
+            if (i % 2 == 0) { addSpike(c, ROWS - 1); if (tier >= 2 && rndR(0, 99) < 55) addSpike(c + 1, ROWS - 1); }
+            else { addSpikeD(c, 2); if (tier >= 2 && rndR(0, 99) < 55) addSpikeD(c + 1, 2); }
+            c += (tier >= 4 ? 6 : 7);
             i++;
         }
     } else if (mode == 3) {
@@ -462,14 +521,14 @@ static void emitSpecial(int s, int len, int mode, int tier) {
         while (c < end) {
             if (i % 2 == 0) addBlock(c, ROWS - 3, c + 1, ROWS - 1);
             else addBlock(c, 0, c + 1, 5);
-            c += (tier >= 4 ? 7 : 8);
+            c += (tier >= 4 ? 6 : 7);
             i++;
         }
     } else if (mode == 2) {
         while (c < end) {
             addSpike(c, ROWS - 1);
-            if (tier >= 3 && rndR(0, 99) < 40) addSpike(c + 1, ROWS - 1);
-            c += (tier >= 4 ? 8 : 10);
+            if (tier >= 2 && rndR(0, 99) < 55) addSpike(c + 1, ROWS - 1);
+            c += (tier >= 4 ? 7 : 9);
         }
     } else {
         int i = 0;
@@ -483,11 +542,11 @@ static void emitSpecial(int s, int len, int mode, int tier) {
                 if (kind == 0) addBlock(c, 0, c + 1, 5);
                 else addSpikeD(c, 2);
             }
-            c += (tier >= 4 ? 6 : 7);
+            c += (tier >= 4 ? 5 : 6);
             i++;
         }
     }
-    addPortal(0, s + len - 4);
+    if (mode != 0) addPortal(0, s + len - 4);
 }
 
 static void genLevel(int idx) {
@@ -496,24 +555,24 @@ static void genLevel(int idx) {
     int tier = levelTier(idx);
     int len = 170 + idx * 6;
     if (len > 470) len = 470;
-    int gap = 9 - imin(2, tier / 2);
+    int gap = 8 - imin(3, tier);
     int cursor = 14;
     int lastSpecial = -200;
     while (cursor < len - 28) {
         int modesAllowed[3];
         int nm = 0;
-        if (idx >= 5) modesAllowed[nm++] = 0;
-        if (idx >= 14) modesAllowed[nm++] = 1;
-        if (idx >= 19) modesAllowed[nm++] = 2;
-        if (idx >= 24) modesAllowed[nm++] = 3;
-        bool wantSpecial = nm > 0 && (cursor - lastSpecial) > 62 && (cursor < len - 70) && (rndR(0, 99) < 16 + tier * 4);
+        if (idx >= 5) modesAllowed[nm++] = 1;
+        if (idx >= 10) modesAllowed[nm++] = 2;
+        if (idx >= 15) modesAllowed[nm++] = 3;
+        if (idx >= 20) modesAllowed[nm++] = 0;
+        bool wantSpecial = nm > 0 && (cursor - lastSpecial) > 52 && (cursor < len - 70) && (rndR(0, 99) < 28 + tier * 4);
         if (wantSpecial) {
             int mode = modesAllowed[rndR(0, nm - 1)];
-            int slen = rndR(34, 46);
+            int slen = rndR(30, 42);
             if (cursor + slen < len - 14) {
                 emitSpecial(cursor, slen, mode, tier);
                 lastSpecial = cursor;
-                cursor += slen + gap + 4;
+                cursor += slen + gap + 2;
                 gLastAtom = -1;
                 continue;
             }
@@ -628,7 +687,9 @@ static int curLevel = 0;
 static int shopSel = 0;
 static bool spacePrev = false;
 static double camX = 0;
+static HDC g_memDC = NULL;
 static double trailT = 0;
+static double plSquash = 0;
 static std::vector<char> trigUsed;
 static bool keys[256];
 static bool keysPrev[256];
@@ -690,9 +751,11 @@ static void spawnSpark(double x, double y, COLORREF col) {
 }
 
 static void spawnTrail() {
+    int r = rand() % 5;
+    COLORREF c = (r == 0) ? skinAccent() : ((r == 1) ? skinDark() : skinMain());
     spawnParticle(pl.x - 6 + (frand() - 0.5) * 10, pl.y + (frand() - 0.5) * 14,
-                  -70 - frand() * 60, (frand() - 0.5) * 40,
-                  0.42, 13 + frand() * 8, skinMain(), 0);
+                  -90 - frand() * 80, (frand() - 0.5) * 44,
+                  0.42, 13 + frand() * 8, c, 0);
 }
 
 static void die() {
@@ -765,6 +828,7 @@ static void resetAttempt() {
     attemptT = 0;
     pct = 0;
     trailT = 0;
+    plSquash = 0;
     parts.clear();
     trigUsed.assign(objs.size(), 0);
 }
@@ -890,11 +954,15 @@ static void checkInteractions() {
 static void updatePlayer(double dt) {
     bool pressed = jumpEdgePending;
     jumpEdgePending = false;
+    plSquash *= exp(-10.0 * dt);
+    if (fabs(plSquash) < 0.01) plSquash = 0;
     switch (pl.mode) {
-    case MODE_CUBE:
+    case MODE_CUBE: {
+        bool wasGround = pl.onGround;
         if (pl.onGround && jumpHeld) {
             pl.vy = -JUMP_V * pl.grav;
             pl.onGround = false;
+            plSquash = 0.38;
             playSfx(SFX_JUMP);
             if (pl.grav > 0) spawnDust();
         }
@@ -903,9 +971,14 @@ static void updatePlayer(double dt) {
         moveX(SPEED * dt);
         if (state != ST_PLAY) return;
         pl.onGround = moveY(pl.vy * dt);
+        if (pl.onGround && !wasGround) {
+            plSquash = -0.34;
+            if (pl.grav > 0) spawnDust();
+        }
         if (!pl.onGround) pl.rot += 640 * dt;
         else pl.rot = floor(pl.rot / 90.0 + 0.5) * 90.0;
         break;
+    }
     case MODE_SHIP:
         pl.vy += (jumpHeld ? SHIP_UP : SHIP_GRAV) * dt;
         pl.vy = clampD(pl.vy, -SHIP_VMAX, SHIP_VMAX);
@@ -1339,30 +1412,40 @@ static void drawFace(HDC hdc, double cx, double cy, double r, int tier) {
     }
 }
 
-static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, int skinIdx) {
+static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, int skinIdx,
+                         double sxK = 1.0, double syK = 1.0) {
     Skin& sk = skins[skinIdx];
     double a = rot * PI / 180.0;
     double ca = cos(a), sa = sin(a);
     auto rp = [&](double px, double py) {
-        return POINT{ (int)(cx + px * ca - py * sa), (int)(cy + px * sa + py * ca) };
+        double qx = px * sxK, qy = py * syK;
+        return POINT{ (int)(cx + qx * ca - qy * sa), (int)(cy + qx * sa + qy * ca) };
     };
     auto sq = [&](double s, POINT* p) {
         p[0] = rp(-s, -s); p[1] = rp(s, -s); p[2] = rp(s, s); p[3] = rp(-s, s);
+    };
+    auto gloss = [&](double s, COLORREF base) {
+        POINT g[3] = { rp(-s, -s * 0.55), rp(s, -s), rp(-s, s) };
+        COLORREF gc = lerpColor(base, RGB(255, 255, 255), 0.30);
+        drawTriShape(hdc, g[0].x, g[0].y, g[1].x, g[1].y, g[2].x, g[2].y, gc, gc);
     };
     switch (sk.style) {
     case SK_SQUARE: {
         POINT p[4]; sq(h, p);
         fillPoly(hdc, p, 4, sk.main, RGB(255, 255, 255), 3);
+        gloss(h, sk.main);
         POINT i2[4]; sq(h * 0.5, i2);
         fillPoly(hdc, i2, 4, sk.dark, sk.dark, 1);
         POINT d[4] = { rp(-h * 0.55, -h * 0.2), rp(-h * 0.2, -h * 0.2), rp(-h * 0.2, h * 0.2), rp(-h * 0.55, h * 0.2) };
         fillPoly(hdc, d, 4, sk.accent, sk.accent, 1);
+        fillCircle(hdc, cx, cy, h * 0.16, lerpColor(sk.accent, RGB(255, 255, 255), 0.35));
         break;
     }
     case SK_ROUNDED: {
         POINT p[8] = { rp(-h * 0.55, -h), rp(h * 0.55, -h), rp(h, -h * 0.55), rp(h, h * 0.55),
                        rp(h * 0.55, h), rp(-h * 0.55, h), rp(-h, h * 0.55), rp(-h, -h * 0.55) };
         fillPoly(hdc, p, 8, sk.main, sk.accent, 3);
+        gloss(h, sk.main);
         POINT i2[8] = { rp(-h * 0.3, -h * 0.55), rp(h * 0.3, -h * 0.55), rp(h * 0.55, -h * 0.3), rp(h * 0.55, h * 0.3),
                         rp(h * 0.3, h * 0.55), rp(-h * 0.3, h * 0.55), rp(-h * 0.55, h * 0.3), rp(-h * 0.55, -h * 0.3) };
         fillPoly(hdc, i2, 8, sk.dark, sk.dark, 1);
@@ -1371,6 +1454,7 @@ static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, in
     case SK_BOLT: {
         POINT p[4]; sq(h, p);
         fillPoly(hdc, p, 4, sk.dark, RGB(255, 255, 255), 3);
+        gloss(h, sk.dark);
         POINT bolt[6] = { rp(-h * 0.15, -h * 0.7), rp(h * 0.5, -h * 0.7), rp(h * 0.05, -h * 0.05),
                           rp(h * 0.45, -h * 0.05), rp(-h * 0.4, h * 0.75), rp(-h * 0.05, h * 0.05) };
         fillPoly(hdc, bolt, 6, sk.main, sk.accent, 2);
@@ -1379,6 +1463,7 @@ static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, in
     case SK_STAR: {
         POINT p[4]; sq(h, p);
         fillPoly(hdc, p, 4, sk.main, RGB(255, 255, 255), 3);
+        gloss(h, sk.main);
         POINT star[10];
         for (int i = 0; i < 10; i++) {
             double ang = -PI / 2 + i * PI / 5;
@@ -1392,6 +1477,7 @@ static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, in
         POINT p[8] = { rp(-h * 0.55, -h), rp(h * 0.55, -h), rp(h, -h * 0.55), rp(h, h * 0.55),
                        rp(h * 0.55, h), rp(-h * 0.55, h), rp(-h, h * 0.55), rp(-h, -h * 0.55) };
         fillPoly(hdc, p, 8, sk.main, RGB(255, 255, 255), 3);
+        gloss(h, sk.main);
         double ex1 = cx - h * 0.4 * ca - (-h * 0.15) * sa, ey1 = cy - h * 0.4 * sa + (-h * 0.15) * ca;
         double ex2 = cx + h * 0.4 * ca - (-h * 0.15) * sa, ey2 = cy + h * 0.4 * sa + (-h * 0.15) * ca;
         fillCircle(hdc, ex1, ey1, h * 0.22, sk.dark);
@@ -1406,6 +1492,7 @@ static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, in
     case SK_SWIRL: {
         POINT p[4]; sq(h, p);
         fillPoly(hdc, p, 4, sk.dark, RGB(255, 255, 255), 3);
+        gloss(h, sk.dark);
         for (int arm = 0; arm < 3; arm++) {
             POINT pts[9];
             for (int i = 0; i < 9; i++) {
@@ -1439,6 +1526,7 @@ static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, in
     case SK_ARROW: {
         POINT p[4]; sq(h, p);
         fillPoly(hdc, p, 4, sk.main, RGB(255, 255, 255), 3);
+        gloss(h, sk.main);
         POINT ar[5] = { rp(-h * 0.6, -h * 0.55), rp(h * 0.55, 0), rp(-h * 0.6, h * 0.55),
                         rp(-h * 0.15, 0), rp(-h * 0.6, -h * 0.55) };
         fillPoly(hdc, ar, 5, sk.accent, sk.dark, 2);
@@ -1457,6 +1545,7 @@ static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, in
     case SK_RING: {
         POINT p[4]; sq(h, p);
         fillPoly(hdc, p, 4, sk.main, RGB(255, 255, 255), 3);
+        gloss(h, sk.main);
         strokeCircle(hdc, cx, cy, h * 0.62, 5, sk.accent);
         fillCircle(hdc, cx, cy, h * 0.2, sk.accent);
         break;
@@ -1464,6 +1553,7 @@ static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, in
     case SK_CROWN: {
         POINT p[4]; sq(h, p);
         fillPoly(hdc, p, 4, sk.dark, RGB(255, 255, 255), 3);
+        gloss(h, sk.dark);
         POINT cr[7] = { rp(-h * 0.7, h * 0.5), rp(-h * 0.7, -h * 0.35), rp(-h * 0.3, 0),
                         rp(0, -h * 0.6), rp(h * 0.3, 0), rp(h * 0.7, -h * 0.35), rp(h * 0.7, h * 0.5) };
         fillPoly(hdc, cr, 7, sk.main, sk.accent, 2);
@@ -1491,6 +1581,40 @@ static void drawBackground(HDC hdc) {
         double t = (double)(y + 40) / (double)(WINDOW_H + 80);
         fillRect(hdc, -40, y, WINDOW_W + 80, 3, lerpColor(top, bot, t));
     }
+    double skyOff = fmod(camX * 0.06, WINDOW_W + 400.0);
+    for (int i = 0; i < 46; i++) {
+        double sx = fmod(i * 97.0 - skyOff, WINDOW_W + 200.0);
+        if (sx < -20) sx += WINDOW_W + 200.0;
+        double sy = 20.0 + fmod(i * 61.0, FLOOR_Y * 0.62 - 40.0);
+        double tw = 0.55 + 0.45 * sin(totalTime * 2.6 + i * 1.7);
+        int sz = (i % 7 == 0) ? 3 : 2;
+        COLORREF sc = lerpColor(top, RGB(255, 255, 255), 0.35 + 0.55 * tw);
+        fillRect(hdc, (int)(sx - 20), (int)sy, sz, sz, sc);
+    }
+    double skyY = FLOOR_Y * 0.62;
+    double bOff = fmod(camX * 0.14, 560.0);
+    if (bOff < 0) bOff += 560.0;
+    for (int i = -1; i < 3; i++) {
+        double bx = i * 300.0 - bOff;
+        double bh1 = 70.0 + (i & 1) * 55.0;
+        double bh2 = 110.0 + ((i + 2) & 1) * 45.0;
+        fillRect(hdc, (int)bx, (int)(skyY - bh1), 140, (int)bh1 + 4, hslToColor(h + 30, 45, (int)(19 + pulse * 3)));
+        fillRect(hdc, (int)(bx + 150), (int)(skyY - bh2), 120, (int)bh2 + 4, hslToColor(h + 30, 45, (int)(16 + pulse * 3)));
+        for (int wY = 0; wY < (int)bh1 - 18; wY += 22) {
+            for (int wX = 0; wX < 3; wX++) {
+                if (((i * 7 + wY / 22 + wX) & 3) == 0)
+                    fillRect(hdc, (int)(bx + 16 + wX * 40), (int)(skyY - bh1 + 12 + wY), 9, 11,
+                             hslToColor(h + 70, 90, (int)(62 + pulse * 14)));
+            }
+        }
+    }
+    for (int i = 0; i < 2; i++) {
+        double beamX = fmod(i * 530.0 + totalTime * 46.0, WINDOW_W + 700.0) - 200.0;
+        POINT beam[4] = { {(int)beamX, -40}, {(int)(beamX + 130), -40},
+                          {(int)(beamX + 330), WINDOW_H + 40}, {(int)(beamX + 170), WINDOW_H + 40} };
+        fillPoly(hdc, beam, 4, lerpColor(top, RGB(255, 255, 255), 0.055 + pulse * 0.05),
+                 lerpColor(top, RGB(255, 255, 255), 0.055 + pulse * 0.05), 1);
+    }
     for (size_t i = 0; i < bgShapes.size(); i++) {
         BgShape& s = bgShapes[i];
         if (s.x > WINDOW_W + 60 || s.x + s.size < -60) continue;
@@ -1508,7 +1632,12 @@ static void drawBackground(HDC hdc) {
 static void drawGround(HDC hdc) {
     int h = activeHue();
     double pulse = beatPulse();
-    fillRect(hdc, -40, FLOOR_Y, WINDOW_W + 80, WINDOW_H - FLOOR_Y + 40, hslToColor(h, 50, 14));
+    COLORREF gTop = hslToColor(h, 50, 14);
+    COLORREF gBot = hslToColor(h, 55, 6);
+    for (int y = FLOOR_Y; y < WINDOW_H; y += 3) {
+        double t = (double)(y - FLOOR_Y) / (double)(WINDOW_H - FLOOR_Y);
+        fillRect(hdc, -40, y, WINDOW_W + 80, 3, lerpColor(gTop, gBot, t));
+    }
     double off = fmod(camX, 40.0);
     if (off < 0) off += 40.0;
     for (double x = -off - 40; x < WINDOW_W + 40; x += 40) {
@@ -1525,11 +1654,12 @@ static void drawGround(HDC hdc) {
 
 static void drawObjects(HDC hdc) {
     int h = activeHue();
+    double pulse = beatPulse();
     COLORREF blockMain = hslToColor(h + 180, 55, 40);
     COLORREF blockTop = hslToColor(h + 180, 60, 55);
-    COLORREF blockEdge = hslToColor(h + 180, 90, 78);
+    COLORREF blockEdge = brighten(hslToColor(h + 180, 90, 78), (int)(pulse * 34));
     COLORREF blockShade = hslToColor(h + 180, 60, 26);
-    COLORREF spikeMain = hslToColor(h, 88, 58);
+    COLORREF spikeMain = brighten(hslToColor(h, 88, 58), (int)(pulse * 26));
     COLORREF spikeDark = hslToColor(h, 70, 38);
     for (size_t i = 0; i < objs.size(); i++) {
         Obj& o = objs[i];
@@ -1561,6 +1691,10 @@ static void drawObjects(HDC hdc) {
             strokeCircle(hdc, cx, cy, 17 * pw, 4, main);
             strokeCircle(hdc, cx, cy, 24 * pw, 2, lite);
             fillCircle(hdc, cx, cy, 7, RGB(255, 255, 255));
+            for (int sp = 0; sp < 4; sp++) {
+                double sa = totalTime * 2.4 + sp * PI / 2.0;
+                fillCircle(hdc, cx + cos(sa) * 24.0 * pw, cy + sin(sa) * 24.0 * pw, 3, lite);
+            }
             break;
         }
         case OBJ_PAD: {
@@ -1571,7 +1705,7 @@ static void drawObjects(HDC hdc) {
             break;
         }
         case OBJ_PORTAL: {
-            double cx = sx + 20, cy = FLOOR_Y * 0.5;
+            double cx = sx + 20, cy = FLOOR_Y - 56;
             COLORREF col, col2;
             if (o.mode == MODE_SHIP) { col = RGB(0, 225, 255); col2 = RGB(170, 250, 255); }
             else if (o.mode == MODE_BALL) { col = RGB(255, 120, 40); col2 = RGB(255, 210, 160); }
@@ -1604,9 +1738,13 @@ static void drawPlayer(HDC hdc) {
     double sx = pl.x - camX;
     double h = 16;
     switch (pl.mode) {
-    case MODE_CUBE:
-        drawSkinCube(hdc, sx, pl.y, pl.rot, h, save.equipped);
+    case MODE_CUBE: {
+        double glowR = 23.0 + 1.5 * sin(totalTime * 5.0);
+        strokeCircle(hdc, sx, pl.y, glowR + 5, 6, lerpColor(skinMain(), RGB(255, 255, 255), 0.28));
+        strokeCircle(hdc, sx, pl.y, glowR + 11, 3, lerpColor(skinMain(), RGB(255, 255, 255), 0.10));
+        drawSkinCube(hdc, sx, pl.y, pl.rot, h, save.equipped, 1.0 - plSquash * 0.5, 1.0 + plSquash);
         break;
+    }
     case MODE_SHIP: {
         double a = pl.rot * PI / 180.0;
         double ca = cos(a), sa = sin(a);
@@ -1858,17 +1996,47 @@ static void draw(HDC hdc) {
     else if (state == ST_WIN) { drawWinUI(hdc); drawParticles(hdc); }
     else drawHUD(hdc);
     if (state == ST_PLAY && paused) drawPauseUI(hdc);
-    {
-        static unsigned long g_frame = 0; g_frame++;
-        char dbg[80]; snprintf(dbg, sizeof(dbg), "S%d P%d F%lu", (int)state, paused ? 1 : 0, g_frame);
-        drawText(hdc, dbg, 8, WINDOW_H - 24, 16, RGB(255, 255, 0));
-    }
     purgeGdi();
+}
+
+static void saveFrameBmp(HDC src, int w, int h, const char* path) {
+    if (!src) return;
+    BITMAPINFOHEADER bi;
+    memset(&bi, 0, sizeof(bi));
+    bi.biSize = sizeof(BITMAPINFOHEADER);
+    bi.biWidth = w;
+    bi.biHeight = h;
+    bi.biPlanes = 1;
+    bi.biBitCount = 24;
+    bi.biCompression = BI_RGB;
+    void* bits = NULL;
+    HBITMAP dib = CreateDIBSection(src, (BITMAPINFO*)&bi, DIB_RGB_COLORS, &bits, NULL, 0);
+    if (!dib || !bits) { if (dib) DeleteObject(dib); return; }
+    HDC dc = CreateCompatibleDC(src);
+    HBITMAP old = (HBITMAP)SelectObject(dc, dib);
+    BitBlt(dc, 0, 0, w, h, src, 0, 0, SRCCOPY);
+    SelectObject(dc, old);
+    DeleteDC(dc);
+    int stride = ((w * 3 + 3) / 4) * 4;
+    FILE* f = fopen(path, "wb");
+    if (f) {
+        BITMAPFILEHEADER fh;
+        memset(&fh, 0, sizeof(fh));
+        fh.bfType = 0x4D42;
+        fh.bfOffBits = 14 + 40;
+        fh.bfSize = (DWORD)(14 + 40 + (long)stride * h);
+        fwrite(&fh, 1, 14, f);
+        fwrite(&bi, 1, 40, f);
+        fwrite(bits, 1, (size_t)stride * h, f);
+        fclose(f);
+    }
+    DeleteObject(dib);
 }
 
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_KEYDOWN:
+        if (wParam == 0x7B) { saveFrameBmp(g_memDC, WINDOW_W, WINDOW_H, "gd_frame.bmp"); return 0; }
         if (wParam < 256) keys[wParam] = true;
         return 0;
     case WM_KEYUP:
@@ -1955,6 +2123,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     HDC memDC = CreateCompatibleDC(hdc);
     HBITMAP memBmp = CreateCompatibleBitmap(hdc, WINDOW_W, WINDOW_H);
     HBITMAP oldBmp = (HBITMAP)SelectObject(memDC, memBmp);
+    g_memDC = memDC;
 
     LARGE_INTEGER freq, last, now;
     QueryPerformanceFrequency(&freq);
