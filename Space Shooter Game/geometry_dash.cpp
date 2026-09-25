@@ -559,7 +559,7 @@ static void genLevel(int idx) {
     int cursor = 14;
     int lastSpecial = -200;
     while (cursor < len - 28) {
-        int modesAllowed[3];
+        int modesAllowed[4];
         int nm = 0;
         if (idx >= 5) modesAllowed[nm++] = 1;
         if (idx >= 10) modesAllowed[nm++] = 2;
@@ -901,6 +901,7 @@ static void checkHazards() {
 }
 
 static void changeMode(int mode) {
+    if (mode < 0 || mode > 3) return;
     if (pl.mode == mode) return;
     pl.mode = mode;
     pl.grav = 1;
