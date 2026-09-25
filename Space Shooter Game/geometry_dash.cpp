@@ -475,10 +475,10 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
     int pool[16];
     int n = 0;
     auto add = [&](int id) { if (id != lastAtom) pool[n++] = id; };
-    add(0); add(1); add(3);
-    if (tier >= 1) { add(2); add(4); }
-    if (tier >= 2) { add(5); add(6); add(12); }
-    if (tier >= 3) { add(7); add(8); add(9); }
+    add(0); add(1); add(3); add(4);
+    if (tier >= 1) { add(2); add(5); }
+    if (tier >= 2) { add(6); add(9); add(12); }
+    if (tier >= 3) { add(7); add(8); }
     if (tier >= 4) { add(10); add(11); }
     int pick = pool[rndR(0, n - 1)];
     gLastAtom = pick;
@@ -555,7 +555,7 @@ static void genLevel(int idx) {
     int tier = levelTier(idx);
     int len = 170 + idx * 6;
     if (len > 470) len = 470;
-    int gap = 8 - imin(3, tier);
+    int gap = 7 - imin(4, tier);
     int cursor = 14;
     int lastSpecial = -200;
     while (cursor < len - 28) {
@@ -1055,7 +1055,7 @@ static void updateBgShapes(double dt) {
 
 static void initBgShapes() {
     bgShapes.clear();
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 14; i++) {
         BgShape s;
         s.x = frand() * (WINDOW_W + 300) - 150;
         s.y = frand() * (FLOOR_Y - 60);
@@ -1207,7 +1207,7 @@ static void frameInput() {
         } else if (rEdge) {
             attempt++;
             resetAttempt();
-            startMusic(curLevel % 3);
+            if (!paused) startMusic(curLevel % 3);
         }
         if (paused) {
             if (btnClick(Btn{ 330, 250, 300, 54 })) { paused = false; pausedGlobal = false; resumeMusic(); }
@@ -1575,8 +1575,8 @@ static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, in
 static void drawBackground(HDC hdc) {
     int h = activeHue();
     double pulse = beatPulse();
-    COLORREF top = hslToColor(h, 72, (int)(24 + pulse * 6));
-    COLORREF bot = hslToColor(h + 40, 76, (int)(47 + pulse * 8));
+    COLORREF top = hslToColor(h, 86, (int)(26 + pulse * 6));
+    COLORREF bot = hslToColor(h + 40, 92, (int)(54 + pulse * 8));
     for (int y = -40; y <= WINDOW_H + 40; y += 3) {
         double t = (double)(y + 40) / (double)(WINDOW_H + 80);
         fillRect(hdc, -40, y, WINDOW_W + 80, 3, lerpColor(top, bot, t));
@@ -1600,11 +1600,14 @@ static void drawBackground(HDC hdc) {
         double bh2 = 110.0 + ((i + 2) & 1) * 45.0;
         fillRect(hdc, (int)bx, (int)(skyY - bh1), 140, (int)bh1 + 4, hslToColor(h + 30, 45, (int)(19 + pulse * 3)));
         fillRect(hdc, (int)(bx + 150), (int)(skyY - bh2), 120, (int)bh2 + 4, hslToColor(h + 30, 45, (int)(16 + pulse * 3)));
+        fillRect(hdc, (int)bx, (int)(skyY - bh1), 140, 3, hslToColor(h + 160, 95, (int)(64 + pulse * 16)));
+        fillRect(hdc, (int)(bx + 150), (int)(skyY - bh2), 120, 3, hslToColor(h + 100, 95, (int)(60 + pulse * 16)));
         for (int wY = 0; wY < (int)bh1 - 18; wY += 22) {
             for (int wX = 0; wX < 3; wX++) {
                 if (((i * 7 + wY / 22 + wX) & 3) == 0)
                     fillRect(hdc, (int)(bx + 16 + wX * 40), (int)(skyY - bh1 + 12 + wY), 9, 11,
-                             hslToColor(h + 70, 90, (int)(62 + pulse * 14)));
+                             ((wY / 22 + wX) & 1) ? hslToColor(h + 70, 90, (int)(62 + pulse * 14))
+                                                  : hslToColor(h + 200, 88, (int)(58 + pulse * 14)));
             }
         }
     }
@@ -1618,15 +1621,30 @@ static void drawBackground(HDC hdc) {
     for (size_t i = 0; i < bgShapes.size(); i++) {
         BgShape& s = bgShapes[i];
         if (s.x > WINDOW_W + 60 || s.x + s.size < -60) continue;
-        COLORREF line = hslToColor(h + 50, 58, (int)(38 + pulse * 6 + s.bright));
-        strokeRect(hdc, s.x, s.y, s.size, s.size, 4, line);
-        if (s.filled) {
-            fillRect(hdc, (int)(s.x + 10), (int)(s.y + 10), (int)(s.size - 20), (int)(s.size - 20),
-                     hslToColor(h + 50, 58, (int)(31 + pulse * 6 + s.bright)));
+        int sh = (h + 180 + (int)(i * 61)) % 360;
+        COLORREF line = hslToColor(sh, 92, (int)(56 + pulse * 8 + s.bright));
+        COLORREF fill = hslToColor(sh, 74, (int)(24 + pulse * 5 + s.bright));
+        if ((i % 3) == 1) {
+            if (s.filled) fillCircle(hdc, s.x + s.size * 0.5, s.y + s.size * 0.5, s.size * 0.5 - 4, fill);
+            strokeCircle(hdc, s.x + s.size * 0.5, s.y + s.size * 0.5, s.size * 0.5, 3, line);
+            strokeCircle(hdc, s.x + s.size * 0.5, s.y + s.size * 0.5, s.size * 0.34, 2, line);
+        } else if ((i % 3) == 2) {
+            POINT dia[4] = { {(int)(s.x + s.size * 0.5), (int)s.y},
+                             {(int)(s.x + s.size), (int)(s.y + s.size * 0.5)},
+                             {(int)(s.x + s.size * 0.5), (int)(s.y + s.size)},
+                             {(int)s.x, (int)(s.y + s.size * 0.5)} };
+            fillPoly(hdc, dia, 4, fill, line, 3);
+        } else {
+            if (s.filled) fillRect(hdc, (int)(s.x + 8), (int)(s.y + 8), (int)(s.size - 16), (int)(s.size - 16), fill);
+            strokeRect(hdc, s.x, s.y, s.size, s.size, 3, line);
         }
     }
     double gy = FLOOR_Y * 0.62;
-    fillRect(hdc, -40, (int)gy, WINDOW_W + 80, 4, hslToColor(h + 180, 90, (int)(55 + pulse * 20)));
+    double hzOff = fmod(camX * 0.35, 64.0);
+    if (hzOff < 0) hzOff += 64.0;
+    for (double x = -hzOff - 64; x < WINDOW_W + 64; x += 64) {
+        fillRect(hdc, (int)x, (int)gy, 40, 4, hslToColor(h + 180, 95, (int)(58 + pulse * 18)));
+    }
 }
 
 static void drawGround(HDC hdc) {
@@ -1641,12 +1659,12 @@ static void drawGround(HDC hdc) {
     double off = fmod(camX, 40.0);
     if (off < 0) off += 40.0;
     for (double x = -off - 40; x < WINDOW_W + 40; x += 40) {
-        strokeRect(hdc, x, FLOOR_Y + 6, 40, WINDOW_H - FLOOR_Y, 2, hslToColor(h, 60, 24));
+        strokeRect(hdc, x, FLOOR_Y + 6, 40, WINDOW_H - FLOOR_Y, 2, hslToColor(h + 180, 45, 33));
     }
     double off2 = fmod(camX, 320.0);
     if (off2 < 0) off2 += 320.0;
     for (double x = -off2 - 320; x < WINDOW_W + 320; x += 320) {
-        fillRect(hdc, (int)x, FLOOR_Y + 6, 120, 3, hslToColor(h, 95, 60));
+        fillRect(hdc, (int)x, FLOOR_Y + 6, 120, 3, hslToColor(h + 55, 95, 64));
     }
     fillRect(hdc, -40, FLOOR_Y - 6, WINDOW_W + 80, 6, hslToColor(h + 180, 95, (int)(68 + pulse * 18)));
     fillRect(hdc, -40, FLOOR_Y, WINDOW_W + 80, 3, hslToColor(h, 80, 30));
@@ -1655,12 +1673,13 @@ static void drawGround(HDC hdc) {
 static void drawObjects(HDC hdc) {
     int h = activeHue();
     double pulse = beatPulse();
-    COLORREF blockMain = hslToColor(h + 180, 55, 40);
-    COLORREF blockTop = hslToColor(h + 180, 60, 55);
-    COLORREF blockEdge = brighten(hslToColor(h + 180, 90, 78), (int)(pulse * 34));
-    COLORREF blockShade = hslToColor(h + 180, 60, 26);
+    COLORREF blockMain = hslToColor(h + 180, 64, 42);
+    COLORREF blockTop = hslToColor(h + 180, 70, 57);
+    COLORREF blockEdge = brighten(hslToColor(h + 180, 92, 78), (int)(pulse * 34));
+    COLORREF blockShade = hslToColor(h + 180, 62, 26);
+    COLORREF blockAccent = hslToColor(h + 55, 95, (int)(62 + pulse * 22));
     COLORREF spikeMain = brighten(hslToColor(h, 88, 58), (int)(pulse * 26));
-    COLORREF spikeDark = hslToColor(h, 70, 38);
+    COLORREF spikeDark = hslToColor(h + 180, 65, 32);
     for (size_t i = 0; i < objs.size(); i++) {
         Obj& o = objs[i];
         double sx = o.x - camX;
@@ -1669,6 +1688,9 @@ static void drawObjects(HDC hdc) {
         case OBJ_BLOCK:
             fillRect(hdc, (int)sx, (int)o.y, (int)o.w, (int)o.h, blockMain);
             fillRect(hdc, (int)sx, (int)o.y, (int)o.w, 7, blockTop);
+            fillRect(hdc, (int)sx, (int)o.y, (int)o.w, 3, blockAccent);
+            fillRect(hdc, (int)(sx + o.w - 5), (int)o.y, 5, (int)o.h, brighten(blockMain, 16));
+            fillRect(hdc, (int)(sx + o.w - 5), (int)o.y, 5, 3, blockAccent);
             fillRect(hdc, (int)sx, (int)(o.y + o.h - 8), (int)o.w, 8, blockShade);
             strokeRect(hdc, sx + 5, o.y + 5, o.w - 10, o.h - 10, 2, blockEdge);
             strokeRect(hdc, sx, o.y, o.w, o.h, 3, brighten(blockEdge, 30));
