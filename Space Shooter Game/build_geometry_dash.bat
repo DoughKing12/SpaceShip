@@ -12,7 +12,7 @@ where g++ >nul 2>&1
 if %errorlevel% equ 0 (
     echo Found MinGW g++. Building with g++...
     echo.
-    g++ -O2 -static -o geometry_dash.exe geometry_dash.cpp -lgdi32 -lwinmm
+    g++ -O2 -static -o geometry_dash.exe geometry_dash.cpp -lgdi32 -lwinmm -lgdiplus -lcomdlg32
     if %errorlevel% equ 0 (
         echo.
         echo BUILD SUCCESSFUL! Run: geometry_dash.exe
@@ -25,7 +25,7 @@ where cl >nul 2>&1
 if %errorlevel% equ 0 (
     echo Found MSVC compiler. Building with cl.exe...
     echo.
-    cl /O2 /EHsc /utf-8 /MT geometry_dash.cpp /Fe:geometry_dash.exe /link user32.lib gdi32.lib winmm.lib
+    cl /O2 /EHsc /utf-8 /MT geometry_dash.cpp /Fe:geometry_dash.exe /link user32.lib gdi32.lib winmm.lib gdiplus.lib comdlg32.lib
     if %errorlevel% equ 0 (
         echo.
         echo BUILD SUCCESSFUL! Run: geometry_dash.exe

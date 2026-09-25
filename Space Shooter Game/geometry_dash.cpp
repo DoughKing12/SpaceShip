@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <mmsystem.h>
+#include <commdlg.h>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -8,6 +9,9 @@
 #include <ctime>
 #include <vector>
 #include <map>
+#include <objidl.h>
+#include <propidl.h>
+#include <gdiplus.h>
 
 static const int WINDOW_W = 960;
 static const int WINDOW_H = 540;
@@ -611,6 +615,40 @@ static Skin skins[12] = {
     { "Diamond",  320, SK_DIAMOND, RGB(80, 200, 255),  RGB(20, 110, 180), RGB(240, 255, 255) },
 };
 
+static HBITMAP g_photo = NULL;
+static int g_photoW = 0, g_photoH = 0;
+static HWND g_hwnd = NULL;
+
+static void freePhoto() {
+    if (g_photo) { DeleteObject(g_photo); g_photo = NULL; }
+    g_photoW = 0;
+    g_photoH = 0;
+}
+
+static bool loadPhotoFile(const char* path) {
+    WCHAR wpath[MAX_PATH];
+    if (!MultiByteToWideChar(CP_ACP, 0, path, -1, wpath, MAX_PATH)) return false;
+    ULONG_PTR gpt = 0;
+    Gdiplus::GdiplusStartupInput gsi;
+    if (Gdiplus::GdiplusStartup(&gpt, &gsi, NULL) != Gdiplus::Ok) return false;
+    bool ok = false;
+    Gdiplus::Bitmap* bmp = Gdiplus::Bitmap::FromFile(wpath, FALSE);
+    if (bmp && bmp->GetLastStatus() == Gdiplus::Ok) {
+        HBITMAP h = NULL;
+        if (bmp->GetHBITMAP(Gdiplus::Color(0, 0, 0, 0), &h) == Gdiplus::Ok && h) {
+            freePhoto();
+            g_photo = h;
+            g_photoW = (int)bmp->GetWidth();
+            g_photoH = (int)bmp->GetHeight();
+            ok = g_photoW > 0 && g_photoH > 0;
+        }
+    }
+    delete bmp;
+    Gdiplus::GdiplusShutdown(gpt);
+    if (!ok) freePhoto();
+    return ok;
+}
+
 struct SaveData {
     int magic;
     int version;
@@ -621,12 +659,14 @@ struct SaveData {
     unsigned int owned;
     int equipped;
     int muted;
+    int customHue[3];
+    char photoPath[260];
 };
 static SaveData save;
 
 static void saveGame() {
     save.magic = 0x47445356;
-    save.version = 1;
+    save.version = 2;
     save.muted = muted ? 1 : 0;
     FILE* f = fopen("geometry_dash_save.dat", "wb");
     if (!f) return;
@@ -640,18 +680,41 @@ static void loadGame() {
     save.unlocked = 0;
     save.owned = 1;
     save.equipped = 0;
+    save.customHue[0] = 145;
+    save.customHue[1] = 170;
+    save.customHue[2] = 200;
     FILE* f = fopen("geometry_dash_save.dat", "rb");
     if (!f) return;
-    if (fread(&save, sizeof(save), 1, f) != 1) { memset(&save, 0, sizeof(save)); save.owned = 1; }
+    size_t n = fread(&save, 1, sizeof(save), f);
     fclose(f);
-    if (save.magic != 0x47445356) { memset(&save, 0, sizeof(save)); save.owned = 1; }
+    if (n < 8 || save.magic != 0x47445356) {
+        memset(&save, 0, sizeof(save));
+        save.owned = 1;
+        save.customHue[0] = 145;
+        save.customHue[1] = 170;
+        save.customHue[2] = 200;
+        return;
+    }
+    if (n < sizeof(save)) {
+        save.customHue[0] = 145;
+        save.customHue[1] = 170;
+        save.customHue[2] = 200;
+        save.photoPath[0] = 0;
+    }
+    save.photoPath[sizeof(save.photoPath) - 1] = 0;
+    save.version = 2;
     save.unlocked = imin(imax(save.unlocked, 0), LEVELS - 1);
-    save.equipped = imin(imax(save.equipped, 0), 11);
+    if (save.owned & (1u << 12)) {
+        save.equipped = imin(imax(save.equipped, 0), 12);
+    } else {
+        save.equipped = imin(imax(save.equipped, 0), 11);
+    }
     save.owned |= 1;
     muted = save.muted != 0;
+    if (save.photoPath[0]) loadPhotoFile(save.photoPath);
 }
 
-enum GameState { ST_MENU, ST_SELECT, ST_SHOP, ST_PLAY, ST_DEAD, ST_WIN };
+enum GameState { ST_MENU, ST_SELECT, ST_SHOP, ST_PLAY, ST_DEAD, ST_WIN, ST_LAB };
 enum Mode { MODE_CUBE = 0, MODE_SHIP = 1, MODE_BALL = 2, MODE_UFO = 3 };
 
 struct Player {
@@ -708,6 +771,28 @@ static void showToast(const char* t) {
     toastT = 2.2;
 }
 
+static void pickPhoto() {
+    char file[MAX_PATH] = "";
+    OPENFILENAMEA ofn;
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwnd;
+    ofn.lpstrFilter = "Images\0*.bmp;*.png;*.jpg;*.jpeg;*.gif\0All Files\0*.*\0";
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    ofn.lpstrTitle = "Pick a cube photo";
+    if (!GetOpenFileNameA(&ofn)) return;
+    if (loadPhotoFile(file)) {
+        snprintf(save.photoPath, sizeof(save.photoPath), "%s", file);
+        saveGame();
+        playSfx(SFX_CLICK);
+        showToast("PHOTO LOADED");
+    } else {
+        showToast("COULD NOT LOAD THAT IMAGE");
+    }
+}
+
 static void spawnParticle(double x, double y, double vx, double vy, double life, double size, COLORREF col, int kind) {
     Particle p;
     p.x = x; p.y = y; p.vx = vx; p.vy = vy;
@@ -715,9 +800,14 @@ static void spawnParticle(double x, double y, double vx, double vy, double life,
     parts.push_back(p);
 }
 
-static COLORREF skinMain() { return skins[save.equipped].main; }
-static COLORREF skinDark() { return skins[save.equipped].dark; }
-static COLORREF skinAccent() { return skins[save.equipped].accent; }
+static COLORREF customColor(int i) {
+    if (i == 0) return hslToColor(save.customHue[0], 88, 55);
+    if (i == 1) return hslToColor(save.customHue[1], 80, 33);
+    return hslToColor(save.customHue[2], 100, 70);
+}
+static COLORREF skinMain() { return save.equipped == 12 ? customColor(0) : skins[save.equipped].main; }
+static COLORREF skinDark() { return save.equipped == 12 ? customColor(1) : skins[save.equipped].dark; }
+static COLORREF skinAccent() { return save.equipped == 12 ? customColor(2) : skins[save.equipped].accent; }
 
 static void spawnDeath() {
     COLORREF cols[4] = { skinMain(), skinDark(), skinAccent(), RGB(255, 255, 255) };
@@ -1199,6 +1289,22 @@ static void frameInput() {
                 break;
             }
         }
+        if (btnClick(Btn{ 230, 496, 500, 36 })) {
+            if (save.owned & (1u << 12)) {
+                state = ST_LAB;
+                playSfx(SFX_CLICK);
+            } else if (save.shards >= 10000) {
+                save.shards -= 10000;
+                save.owned |= (1u << 12);
+                saveGame();
+                state = ST_LAB;
+                playSfx(SFX_BUY);
+                showToast("COLOR LAB UNLOCKED!");
+            } else {
+                playSfx(SFX_LOCKED);
+                showToast("NEED 10000 SHARDS");
+            }
+        }
     } else if (state == ST_PLAY) {
         if (escEdge || pEdge) {
             paused = !paused;
@@ -1231,6 +1337,45 @@ static void frameInput() {
             if (curLevel + 1 <= save.unlocked && curLevel < LEVELS - 1) startLevel(curLevel + 1);
             else startLevel(curLevel);
         } else if (escEdge) { state = ST_SELECT; playSfx(SFX_CLICK); }
+    } else if (state == ST_LAB) {
+        static bool labDrag = false;
+        if (mouseDown) {
+            for (int sIdx = 0; sIdx < 3; sIdx++) {
+                double sy = 200 + sIdx * 58;
+                if (mx >= 300 && mx < 760 && my >= sy && my < sy + 30) {
+                    int hue = (int)((mx - 300) / 460.0 * 359.0);
+                    save.customHue[sIdx] = imin(imax(hue, 0), 359);
+                    labDrag = true;
+                }
+            }
+        }
+        if (!mouseDown && labDrag) {
+            labDrag = false;
+            saveGame();
+            playSfx(SFX_CLICK);
+        }
+        if (btnClick(Btn{ 120, 372, 220, 46 })) {
+            pickPhoto();
+        } else if (btnClick(Btn{ 360, 372, 220, 46 })) {
+            freePhoto();
+            save.photoPath[0] = 0;
+            saveGame();
+            playSfx(SFX_CLICK);
+            showToast("PHOTO CLEARED");
+        } else if (btnClick(Btn{ 600, 372, 240, 46 })) {
+            save.equipped = 12;
+            saveGame();
+            playSfx(SFX_BUY);
+            showToast("CUSTOM CUBE EQUIPPED");
+        } else if (btnClick(Btn{ 380, 466, 200, 46 })) {
+            saveGame();
+            state = ST_SHOP;
+            playSfx(SFX_CLICK);
+        } else if (escEdge) {
+            saveGame();
+            state = ST_SHOP;
+            playSfx(SFX_CLICK);
+        }
     }
 
     jumpHeld = (state == ST_PLAY && !paused) ? jk : false;
@@ -1415,6 +1560,45 @@ static void drawFace(HDC hdc, double cx, double cy, double r, int tier) {
 
 static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, int skinIdx,
                          double sxK = 1.0, double syK = 1.0) {
+    if (skinIdx == 12) {
+        double a = rot * PI / 180.0;
+        double ca = cos(a), sa = sin(a);
+        auto rp = [&](double px, double py) {
+            double qx = px * sxK, qy = py * syK;
+            return POINT{ (int)(cx + qx * ca - qy * sa), (int)(cy + qx * sa + qy * ca) };
+        };
+        POINT p[4] = { rp(-h, -h), rp(h, -h), rp(h, h), rp(-h, h) };
+        fillPoly(hdc, p, 4, customColor(0), RGB(255, 255, 255), 3);
+        if (g_photo) {
+            HRGN rgn = CreatePolygonRgn(p, 4, WINDING);
+            SaveDC(hdc);
+            SelectClipRgn(hdc, rgn);
+            double side = h * 2.0;
+            double sc = side / (g_photoW < g_photoH ? g_photoW : g_photoH);
+            int dw = (int)(g_photoW * sc), dh = (int)(g_photoH * sc);
+            int dx = (int)(cx - dw * 0.5), dy = (int)(cy - dh * 0.5);
+            HDC mem = CreateCompatibleDC(hdc);
+            HBITMAP old = (HBITMAP)SelectObject(mem, g_photo);
+            SetStretchBltMode(hdc, HALFTONE);
+            SetBrushOrgEx(hdc, 0, 0, NULL);
+            StretchBlt(hdc, dx, dy, dw, dh, mem, 0, 0, g_photoW, g_photoH, SRCCOPY);
+            SelectObject(mem, old);
+            DeleteDC(mem);
+            RestoreDC(hdc, -1);
+            DeleteObject(rgn);
+        } else {
+            POINT i2[4] = { rp(-h * 0.55, -h * 0.55), rp(h * 0.55, -h * 0.55),
+                            rp(h * 0.55, h * 0.55), rp(-h * 0.55, h * 0.55) };
+            fillPoly(hdc, i2, 4, customColor(1), customColor(1), 1);
+            POINT d[4] = { rp(-h * 0.5, -h * 0.18), rp(-h * 0.18, -h * 0.18),
+                           rp(-h * 0.18, h * 0.18), rp(-h * 0.5, h * 0.18) };
+            fillPoly(hdc, d, 4, customColor(2), customColor(2), 1);
+        }
+        POINT g[3] = { rp(-h, -h * 0.55), rp(h, -h), rp(-h, h) };
+        COLORREF gc = lerpColor(customColor(0), RGB(255, 255, 255), 0.30);
+        drawTriShape(hdc, g[0].x, g[0].y, g[1].x, g[1].y, g[2].x, g[2].y, gc, gc);
+        return;
+    }
     Skin& sk = skins[skinIdx];
     double a = rot * PI / 180.0;
     double ca = cos(a), sa = sin(a);
@@ -1963,8 +2147,40 @@ static void drawShopUI(HDC hdc) {
                      save.shards >= skins[i].price ? RGB(160, 220, 255) : RGB(255, 140, 140));
         }
     }
-    drawTextC(hdc, "WIN LEVELS TO EARN SHARDS  -  ESC TO GO BACK", WINDOW_W / 2, 508, 17, RGB(210, 215, 235));
-    if (toastT > 0 && toastText[0]) drawTextC(hdc, toastText, WINDOW_W / 2, 478, 22, RGB(255, 230, 100));
+    bool labOwned = (save.owned & (1u << 12)) != 0;
+    drawBtn(hdc, Btn{ 230, 496, 500, 36 },
+            labOwned ? "OPEN COLOR LAB - DESIGN YOUR CUBE" : "COLOR LAB - 10000 SHARDS", 20,
+            labOwned ? RGB(170, 120, 255) : (save.shards >= 10000 ? RGB(70, 220, 130) : RGB(95, 95, 115)));
+    if (toastT > 0 && toastText[0]) drawTextC(hdc, toastText, WINDOW_W / 2, 466, 22, RGB(255, 230, 100));
+}
+
+static void drawLabUI(HDC hdc) {
+    char buf[96];
+    drawTextC(hdc, "COLOR LAB", WINDOW_W / 2, 14, 34, RGB(255, 255, 255));
+    drawShardCount(hdc, WINDOW_W - 150, 16);
+    drawSkinCube(hdc, 480, 118, totalTime * 90.0, 40, 12);
+    const char* names[3] = { "PRIMARY", "SECONDARY", "GLOW" };
+    for (int i = 0; i < 3; i++) {
+        double sy = 200 + i * 58;
+        int sat = (i == 0) ? 88 : ((i == 1) ? 80 : 100);
+        int lig = (i == 0) ? 55 : ((i == 1) ? 33 : 70);
+        for (int x = 0; x < 460; x++) {
+            fillRect(hdc, 300 + x, (int)sy, 1, 30, hslToColor((int)(x * 359 / 459.0), sat, lig));
+        }
+        strokeRect(hdc, 300, sy, 460, 30, 2, RGB(255, 255, 255));
+        drawTextC(hdc, names[i], 170, (int)sy + 5, 20, RGB(235, 238, 250));
+        double kx = 300 + save.customHue[i] / 359.0 * 460.0;
+        fillCircle(hdc, kx, sy + 15, 12, RGB(255, 255, 255));
+        fillCircle(hdc, kx, sy + 15, 9, customColor(i));
+    }
+    drawBtn(hdc, Btn{ 120, 372, 220, 46 }, "LOAD PHOTO", 22, RGB(80, 170, 255));
+    drawBtn(hdc, Btn{ 360, 372, 220, 46 }, "CLEAR PHOTO", 22, RGB(255, 120, 120));
+    drawBtn(hdc, Btn{ 600, 372, 240, 46 }, "EQUIP CUBE", 22, RGB(70, 220, 130));
+    snprintf(buf, sizeof(buf), "%s   -   %s", g_photo ? "PHOTO: LOADED" : "PHOTO: NONE",
+             (save.equipped == 12) ? "EQUIPPED" : "NOT EQUIPPED");
+    drawTextC(hdc, buf, WINDOW_W / 2, 432, 18, g_photo ? RGB(160, 220, 255) : RGB(200, 205, 225));
+    drawBtn(hdc, Btn{ 380, 466, 200, 46 }, "BACK", 22, RGB(120, 130, 160));
+    if (toastT > 0 && toastText[0]) drawTextC(hdc, toastText, WINDOW_W / 2, 452, 20, RGB(255, 230, 100));
 }
 
 static void drawWinUI(HDC hdc) {
@@ -2002,20 +2218,21 @@ static void draw(HDC hdc) {
     SetViewportOrgEx(hdc, ox, oy, NULL);
     drawBackground(hdc);
     drawGround(hdc);
-    if (state == ST_MENU || state == ST_SELECT || state == ST_SHOP) {
+    if (state == ST_MENU || state == ST_SELECT || state == ST_SHOP || state == ST_LAB) {
         drawMenuScene(hdc);
     } else if (state != ST_WIN) {
         drawObjects(hdc);
         drawParticles(hdc);
         drawPlayer(hdc);
     }
-    if (state == ST_SELECT || state == ST_SHOP) {
+    if (state == ST_SELECT || state == ST_SHOP || state == ST_LAB) {
         for (int y = 0; y < WINDOW_H; y += 2) fillRect(hdc, 0, y, WINDOW_W, 1, RGB(10, 12, 24));
     }
     SetViewportOrgEx(hdc, 0, 0, NULL);
     if (state == ST_MENU) drawMenuUI(hdc);
     else if (state == ST_SELECT) drawSelectUI(hdc);
     else if (state == ST_SHOP) drawShopUI(hdc);
+    else if (state == ST_LAB) drawLabUI(hdc);
     else if (state == ST_WIN) { drawWinUI(hdc); drawParticles(hdc); }
     else drawHUD(hdc);
     if (state == ST_PLAY && paused) drawPauseUI(hdc);
@@ -2141,6 +2358,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
+    g_hwnd = hwnd;
 
     HDC hdc = GetDC(hwnd);
     HDC memDC = CreateCompatibleDC(hdc);
