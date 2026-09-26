@@ -476,10 +476,10 @@ static void addPad(int c, int r) { objs.push_back(Obj{ OBJ_PAD, (double)c * CELL
 static void addPortal(int mode, int c) { objs.push_back(Obj{ OBJ_PORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, mode }); }
 
 static int emitCubeAtom(int s, int tier, int lastAtom) {
-    int pool[16];
+    int pool[20];
     int n = 0;
     auto add = [&](int id) { if (id != lastAtom) pool[n++] = id; };
-    add(0); add(1); add(2); add(3); add(4); add(13); add(14);
+    add(0); add(1); add(2); add(3); add(4); add(13); add(14); add(15); add(16);
     if (tier >= 1) { add(5); }
     if (tier >= 2) { add(6); add(9); add(12); }
     if (tier >= 3) { add(7); add(8); }
@@ -505,6 +505,8 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
              return s + 21;
     case 13: addBlock(s + 4, ROWS - 1, s + 6, ROWS - 1); addSpike(s + 9, ROWS - 1); return s + 10;
     case 14: addSpike(s + 2, ROWS - 1); addSpike(s + 5, ROWS - 1); addSpike(s + 8, ROWS - 1); return s + 9;
+    case 15: addBlock(s + 4, ROWS - 1, s + 7, ROWS - 1); addSpike(s + 5, ROWS - 2); return s + 8;
+    case 16: addBlock(s + 4, ROWS - 1, s + 6, ROWS - 1); addBlock(s + 8, ROWS - 2, s + 10, ROWS - 1); return s + 11;
     }
     return s + 3;
 }
@@ -561,7 +563,7 @@ static void genLevel(int idx) {
     int tier = levelTier(idx);
     int len = 170 + idx * 6;
     if (len > 470) len = 470;
-    int gap = imax(3, 5 - tier);
+    int gap = imax(3, 4 - tier / 2);
     if (idx % 10 >= 7) gap = imax(3, gap - 1);
     int cursor = 10;
     int lastSpecial = -200;
