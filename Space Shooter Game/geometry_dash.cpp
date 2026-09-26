@@ -429,7 +429,7 @@ static void pollMusic() {
     }
 }
 
-enum ObjType { OBJ_BLOCK, OBJ_SPIKE_UP, OBJ_SPIKE_DOWN, OBJ_ORB, OBJ_ORB_BLUE, OBJ_PAD, OBJ_PORTAL, OBJ_FINISH };
+enum ObjType { OBJ_BLOCK, OBJ_SPIKE_UP, OBJ_SPIKE_DOWN, OBJ_ORB, OBJ_ORB_BLUE, OBJ_PAD, OBJ_PORTAL, OBJ_FINISH, OBJ_SHARD };
 struct Obj { ObjType t; double x, y, w, h; int mode; };
 
 static std::vector<Obj> objs;
@@ -474,6 +474,7 @@ static void addOrb(int c, int r) { objs.push_back(Obj{ OBJ_ORB, (double)c * CELL
 static void addOrbBlue(int c, int r) { objs.push_back(Obj{ OBJ_ORB_BLUE, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
 static void addPad(int c, int r) { objs.push_back(Obj{ OBJ_PAD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL / 2.0, 0 }); }
 static void addPortal(int mode, int c) { objs.push_back(Obj{ OBJ_PORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, mode }); }
+static void addShard(int c, int r) { objs.push_back(Obj{ OBJ_SHARD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
 
 static int emitCubeAtom(int s, int tier, int lastAtom) {
     int pool[20];
@@ -580,6 +581,7 @@ static void genLevel(int idx) {
             int slen = rndR(30, 42);
             if (cursor + slen < len - 14) {
                 emitSpecial(cursor, slen, mode, tier);
+                if (rndR(0, 99) < 70) addShard(cursor + slen + 1, 9);
                 lastSpecial = cursor;
                 cursor += slen + gap + 2;
                 gLastAtom = -1;
@@ -588,6 +590,7 @@ static void genLevel(int idx) {
         }
         int end = emitCubeAtom(cursor, tier, gLastAtom);
         cursor = end + gap;
+        if (rndR(0, 99) < 45 && cursor < len - 8) addShard(end + gap / 2, rndR(9, 10));
     }
     finishX = (double)(len - 6) * CELL;
     objs.push_back(Obj{ OBJ_FINISH, finishX, 0.0, (double)(CELL * 2), (double)FLOOR_Y, 0 });
@@ -672,6 +675,7 @@ struct SaveData {
     int customHue[3];
     char photoPath[260];
     int labOwned;
+    unsigned char drawCells[144];
 };
 static SaveData save;
 
@@ -707,7 +711,7 @@ static void loadGame() {
         save.customHue[2] = 200;
         return;
     }
-    const size_t v2Size = sizeof(save) - 4;
+    const size_t v2Size = 700;
     if (n < v2Size) {
         save.customHue[0] = 145;
         save.customHue[1] = 170;
@@ -770,6 +774,8 @@ static int curLevel = 0;
 static int shopSel = 0;
 static bool spacePrev = false;
 static double camX = 0;
+static double gSpeed = 430.0;
+static int g_drawPal = 1;
 static HDC g_memDC = NULL;
 static double trailT = 0;
 static double plSquash = 0;
@@ -936,6 +942,7 @@ static void winGame() {
 static void startLevel(int idx) {
     curLevel = idx;
     genLevel(idx);
+    gSpeed = 430.0 + levelTier(idx) * 16.0;
     state = ST_PLAY;
     attempt = 1;
     paused = false;
@@ -1083,6 +1090,14 @@ static void checkInteractions() {
                     spawnSpark(o.x + 20, o.y, RGB(255, 225, 80));
                 }
             }
+        } else if (o.t == OBJ_SHARD) {
+            if (!trigUsed[i] && rectOverlap(pl.x - P_HALF, pl.y - P_HALF, P_HALF * 2, P_HALF * 2, o.x + 4, o.y + 4, 32, 32)) {
+                trigUsed[i] = 1;
+                save.shards += 5;
+                saveGame();
+                playSfx(SFX_COIN);
+                spawnSpark(o.x + 20, o.y + 20, RGB(255, 225, 80));
+            }
         } else if (o.t == OBJ_PORTAL) {
             double cx = o.x + 20;
             if (fabs(pl.x - cx) < 26) changeMode(o.mode);
@@ -1108,7 +1123,7 @@ static void updatePlayer(double dt) {
         }
         pl.vy += GRAV * pl.grav * dt;
         pl.vy = clampD(pl.vy, -TERM_V, TERM_V);
-        moveX(SPEED * dt);
+        moveX(gSpeed * dt);
         if (state != ST_PLAY) return;
         pl.onGround = moveY(pl.vy * dt);
         if (pl.onGround && !wasGround) {
@@ -1122,7 +1137,7 @@ static void updatePlayer(double dt) {
     case MODE_SHIP:
         pl.vy += (jumpHeld ? SHIP_UP : SHIP_GRAV) * dt;
         pl.vy = clampD(pl.vy, -SHIP_VMAX, SHIP_VMAX);
-        moveX(SPEED * dt);
+        moveX(gSpeed * dt);
         if (state != ST_PLAY) return;
         moveY(pl.vy * dt);
         pl.rot = pl.vy / SHIP_VMAX * 30.0;
@@ -1137,7 +1152,7 @@ static void updatePlayer(double dt) {
         }
         pl.vy += GRAV * pl.grav * dt;
         pl.vy = clampD(pl.vy, -TERM_V, TERM_V);
-        moveX(SPEED * dt);
+        moveX(gSpeed * dt);
         if (state != ST_PLAY) return;
         pl.onGround = moveY(pl.vy * dt);
         if (pl.onGround) pl.rot += 470 * dt * pl.grav;
@@ -1151,7 +1166,7 @@ static void updatePlayer(double dt) {
         }
         pl.vy += GRAV * dt;
         pl.vy = clampD(pl.vy, -700, UFO_FALL);
-        moveX(SPEED * dt);
+        moveX(gSpeed * dt);
         if (state != ST_PLAY) return;
         moveY(pl.vy * dt);
         pl.rot = pl.vy / UFO_FALL * 18.0;
@@ -1184,7 +1199,7 @@ static void updateParticles(double dt) {
 static void updateBgShapes(double dt) {
     for (size_t i = 0; i < bgShapes.size(); i++) {
         BgShape& s = bgShapes[i];
-        s.x -= SPEED * s.depth * dt;
+        s.x -= gSpeed * s.depth * dt;
         if (s.x + s.size < -80) {
             s.x = WINDOW_W + 60 + frand() * 240;
             s.y = frand() * (FLOOR_Y - 60);
@@ -1392,13 +1407,24 @@ static void frameInput() {
         } else if (escEdge) { state = ST_SELECT; playSfx(SFX_CLICK); }
     } else if (state == ST_LAB) {
         static bool labDrag = false;
+        static bool drawDirty = false;
         if (mouseDown) {
             for (int sIdx = 0; sIdx < 3; sIdx++) {
                 double sy = 200 + sIdx * 58;
-                if (mx >= 300 && mx < 760 && my >= sy && my < sy + 30) {
-                    int hue = (int)((mx - 300) / 460.0 * 359.0);
+                if (mx >= 300 && mx < 700 && my >= sy && my < sy + 30) {
+                    int hue = (int)((mx - 300) / 400.0 * 359.0);
                     save.customHue[sIdx] = imin(imax(hue, 0), 359);
                     labDrag = true;
+                }
+            }
+            if (mx >= 740 && mx < 932 && my >= 150 && my < 342) {
+                int cc = (mx - 740) / 16, rr = (my - 150) / 16;
+                if (cc >= 0 && cc < 12 && rr >= 0 && rr < 12) {
+                    unsigned char v = (g_drawPal == 6) ? 0 : (unsigned char)g_drawPal;
+                    if (save.drawCells[rr * 12 + cc] != v) {
+                        save.drawCells[rr * 12 + cc] = v;
+                        drawDirty = true;
+                    }
                 }
             }
         }
@@ -1406,6 +1432,20 @@ static void frameInput() {
             labDrag = false;
             saveGame();
             playSfx(SFX_CLICK);
+        }
+        if (!mouseDown && drawDirty) {
+            drawDirty = false;
+            saveGame();
+            playSfx(SFX_CLICK);
+        }
+        if (clickEdge) {
+            for (int sw = 0; sw < 6; sw++) {
+                int bx = 740 + sw * 30;
+                if (mx >= bx && mx < bx + 26 && my >= 118 && my < 144) {
+                    g_drawPal = sw + 1;
+                    playSfx(SFX_CLICK);
+                }
+            }
         }
         if (btnClick(Btn{ 120, 372, 220, 46 })) {
             pickPhoto();
@@ -1420,6 +1460,11 @@ static void frameInput() {
             saveGame();
             playSfx(SFX_BUY);
             showToast("CUSTOM CUBE EQUIPPED");
+        } else if (btnClick(Btn{ 660, 466, 260, 46 })) {
+            memset(save.drawCells, 0, sizeof(save.drawCells));
+            saveGame();
+            playSfx(SFX_CLICK);
+            showToast("DRAWING CLEARED");
         } else if (btnClick(Btn{ 380, 466, 200, 46 })) {
             saveGame();
             state = ST_SHOP;
@@ -1648,6 +1693,18 @@ static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, in
             fillPoly(hdc, d, 4, customColor(2), customColor(2), 1);
         }
         POINT g[3] = { rp(-h, -h * 0.55), rp(h, -h), rp(-h, h) };
+        for (int dr = 0; dr < 12; dr++) {
+            for (int dc2 = 0; dc2 < 12; dc2++) {
+                unsigned char v = save.drawCells[dr * 12 + dc2];
+                if (!v) continue;
+                COLORREF dcol = (v == 1) ? customColor(0) : (v == 2) ? customColor(1) : (v == 3) ? customColor(2) :
+                                (v == 4) ? RGB(255, 255, 255) : RGB(25, 25, 35);
+                double cellS = h * 2.0 / 12.0;
+                double x0 = -h + dc2 * cellS, y0 = -h + dr * cellS;
+                POINT q[4] = { rp(x0, y0), rp(x0 + cellS, y0), rp(x0 + cellS, y0 + cellS), rp(x0, y0 + cellS) };
+                fillPoly(hdc, q, 4, dcol, dcol, 1);
+            }
+        }
         COLORREF gc = lerpColor(customColor(0), RGB(255, 255, 255), 0.30);
         drawTriShape(hdc, g[0].x, g[0].y, g[1].x, g[1].y, g[2].x, g[2].y, gc, gc);
         return;
@@ -2073,6 +2130,14 @@ static void drawObjects(HDC hdc) {
             drawTextC(hdc, letters[imin(o.mode, 3)], (int)cx - 4, (int)cy - 34, 16, col2);
             break;
         }
+        case OBJ_SHARD: {
+            if (trigUsed[i]) break;
+            double by = o.y + 20 + sin(totalTime * 3.0 + (double)i) * 4.0;
+            double pw = 1.0 + 0.15 * sin(totalTime * 5.0 + (double)i);
+            strokeCircle(hdc, sx + 20, by, 15 * pw, 3, hslToColor(48, 100, 62));
+            drawShard(hdc, sx + 20, by, 9 * pw);
+            break;
+        }
         case OBJ_FINISH: {
             for (int yy = 0; yy < FLOOR_Y; yy += 20) {
                 for (int xx = 0; xx < 2; xx++) {
@@ -2294,9 +2359,14 @@ static void drawShopUI(HDC hdc) {
                      save.shards >= skins[i].price ? RGB(160, 220, 255) : RGB(255, 140, 140));
         }
     }
-    drawBtn(hdc, Btn{ 230, 496, 500, 36 },
-            save.labOwned ? "OPEN COLOR LAB - DESIGN YOUR CUBE" : "COLOR LAB - 10000 SHARDS", 20,
-            save.labOwned ? RGB(170, 120, 255) : (save.shards >= 10000 ? RGB(70, 220, 130) : RGB(95, 95, 115)));
+    char labBtn[64];
+    if (save.labOwned) {
+        drawBtn(hdc, Btn{ 230, 496, 500, 36 }, "OPEN COLOR LAB - DESIGN YOUR CUBE", 20, RGB(170, 120, 255));
+    } else {
+        snprintf(labBtn, sizeof(labBtn), "COLOR LAB - %d / 10000 SHARDS", save.shards);
+        drawBtn(hdc, Btn{ 230, 496, 500, 36 }, labBtn, 18,
+                save.shards >= 10000 ? RGB(70, 220, 130) : RGB(95, 95, 115));
+    }
     if (toastT > 0 && toastText[0]) drawTextC(hdc, toastText, WINDOW_W / 2, 466, 22, RGB(255, 230, 100));
 }
 
@@ -2310,15 +2380,36 @@ static void drawLabUI(HDC hdc) {
         double sy = 200 + i * 58;
         int sat = (i == 0) ? 88 : ((i == 1) ? 80 : 100);
         int lig = (i == 0) ? 55 : ((i == 1) ? 33 : 70);
-        for (int x = 0; x < 460; x++) {
-            fillRect(hdc, 300 + x, (int)sy, 1, 30, hslToColor((int)(x * 359 / 459.0), sat, lig));
+        for (int x = 0; x < 400; x++) {
+            fillRect(hdc, 300 + x, (int)sy, 1, 30, hslToColor((int)(x * 359 / 399.0), sat, lig));
         }
-        strokeRect(hdc, 300, sy, 460, 30, 2, RGB(255, 255, 255));
+        strokeRect(hdc, 300, sy, 400, 30, 2, RGB(255, 255, 255));
         drawTextC(hdc, names[i], 170, (int)sy + 5, 20, RGB(235, 238, 250));
-        double kx = 300 + save.customHue[i] / 359.0 * 460.0;
+        double kx = 300 + save.customHue[i] / 359.0 * 400.0;
         fillCircle(hdc, kx, sy + 15, 12, RGB(255, 255, 255));
         fillCircle(hdc, kx, sy + 15, 9, customColor(i));
     }
+    drawTextC(hdc, "DRAW YOUR CUBE", 836, 92, 15, RGB(210, 215, 235));
+    COLORREF palCols[6] = { customColor(0), customColor(1), customColor(2),
+                            RGB(255, 255, 255), RGB(25, 25, 35), RGB(95, 95, 115) };
+    for (int sw = 0; sw < 6; sw++) {
+        int bx = 740 + sw * 30;
+        fillRect(hdc, bx, 118, 26, 26, palCols[sw]);
+        strokeRect(hdc, bx, 118, 26, 26, (g_drawPal == sw + 1) ? 3 : 2,
+                   (g_drawPal == sw + 1) ? RGB(255, 255, 160) : RGB(120, 130, 160));
+        if (sw == 5) drawTextC(hdc, "E", bx + 13, 121, 16, RGB(235, 238, 250));
+    }
+    fillRect(hdc, 740, 150, 192, 192, RGB(30, 32, 48));
+    for (int rr = 0; rr < 12; rr++) {
+        for (int cc = 0; cc < 12; cc++) {
+            unsigned char v = save.drawCells[rr * 12 + cc];
+            if (!v) continue;
+            COLORREF dcol = (v == 1) ? customColor(0) : (v == 2) ? customColor(1) : (v == 3) ? customColor(2) :
+                            (v == 4) ? RGB(255, 255, 255) : RGB(25, 25, 35);
+            fillRect(hdc, 741 + cc * 16, 151 + rr * 16, 15, 15, dcol);
+        }
+    }
+    strokeRect(hdc, 740, 150, 192, 192, 2, RGB(255, 255, 255));
     drawBtn(hdc, Btn{ 120, 372, 220, 46 }, "LOAD PHOTO", 22, RGB(80, 170, 255));
     drawBtn(hdc, Btn{ 360, 372, 220, 46 }, "CLEAR PHOTO", 22, RGB(255, 120, 120));
     drawBtn(hdc, Btn{ 600, 372, 240, 46 }, "EQUIP CUBE", 22, RGB(70, 220, 130));
@@ -2326,6 +2417,7 @@ static void drawLabUI(HDC hdc) {
              (save.equipped == 16) ? "EQUIPPED" : "NOT EQUIPPED");
     drawTextC(hdc, buf, WINDOW_W / 2, 432, 18, g_photo ? RGB(160, 220, 255) : RGB(200, 205, 225));
     drawBtn(hdc, Btn{ 380, 466, 200, 46 }, "BACK", 22, RGB(120, 130, 160));
+    drawBtn(hdc, Btn{ 660, 466, 260, 46 }, "CLEAR DRAWING", 20, RGB(255, 130, 130));
     if (toastT > 0 && toastText[0]) drawTextC(hdc, toastText, WINDOW_W / 2, 452, 20, RGB(255, 230, 100));
 }
 
