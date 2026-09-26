@@ -479,8 +479,8 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
     int pool[16];
     int n = 0;
     auto add = [&](int id) { if (id != lastAtom) pool[n++] = id; };
-    add(0); add(1); add(3); add(4);
-    if (tier >= 1) { add(2); add(5); }
+    add(0); add(1); add(2); add(3); add(4);
+    if (tier >= 1) { add(5); }
     if (tier >= 2) { add(6); add(9); add(12); }
     if (tier >= 3) { add(7); add(8); }
     if (tier >= 4) { add(10); add(11); }
@@ -517,7 +517,7 @@ static void emitSpecial(int s, int len, int mode, int tier) {
         while (c < end) {
             if (i % 2 == 0) { addSpike(c, ROWS - 1); if (tier >= 2 && rndR(0, 99) < 55) addSpike(c + 1, ROWS - 1); }
             else { addSpikeD(c, 2); if (tier >= 2 && rndR(0, 99) < 55) addSpikeD(c + 1, 2); }
-            c += (tier >= 4 ? 6 : 7);
+            c += (tier >= 4 ? 5 : tier >= 2 ? 6 : 7);
             i++;
         }
     } else if (mode == 3) {
@@ -525,14 +525,14 @@ static void emitSpecial(int s, int len, int mode, int tier) {
         while (c < end) {
             if (i % 2 == 0) addBlock(c, ROWS - 3, c + 1, ROWS - 1);
             else addBlock(c, 0, c + 1, 5);
-            c += (tier >= 4 ? 6 : 7);
+            c += (tier >= 4 ? 5 : tier >= 2 ? 6 : 7);
             i++;
         }
     } else if (mode == 2) {
         while (c < end) {
             addSpike(c, ROWS - 1);
             if (tier >= 2 && rndR(0, 99) < 55) addSpike(c + 1, ROWS - 1);
-            c += (tier >= 4 ? 7 : 9);
+            c += (tier >= 4 ? 6 : tier >= 2 ? 8 : 9);
         }
     } else {
         int i = 0;
@@ -559,8 +559,8 @@ static void genLevel(int idx) {
     int tier = levelTier(idx);
     int len = 170 + idx * 6;
     if (len > 470) len = 470;
-    int gap = 7 - imin(4, tier);
-    int cursor = 14;
+    int gap = 6 - imin(3, tier);
+    int cursor = 12;
     int lastSpecial = -200;
     while (cursor < len - 28) {
         int modesAllowed[4];
@@ -569,7 +569,7 @@ static void genLevel(int idx) {
         if (idx >= 10) modesAllowed[nm++] = 2;
         if (idx >= 15) modesAllowed[nm++] = 3;
         if (idx >= 20) modesAllowed[nm++] = 0;
-        bool wantSpecial = nm > 0 && (cursor - lastSpecial) > 52 && (cursor < len - 70) && (rndR(0, 99) < 28 + tier * 4);
+        bool wantSpecial = nm > 0 && (cursor - lastSpecial) > 44 && (cursor < len - 70) && (rndR(0, 99) < 36 + tier * 4);
         if (wantSpecial) {
             int mode = modesAllowed[rndR(0, nm - 1)];
             int slen = rndR(30, 42);
@@ -590,7 +590,8 @@ static void genLevel(int idx) {
 
 enum SkinStyle {
     SK_SQUARE, SK_ROUNDED, SK_BOLT, SK_STAR, SK_SKULL, SK_SWIRL,
-    SK_PIXEL, SK_ARROW, SK_EYE, SK_RING, SK_CROWN, SK_DIAMOND
+    SK_PIXEL, SK_ARROW, SK_EYE, SK_RING, SK_CROWN, SK_DIAMOND,
+    SK_TRIANGLE, SK_HEX, SK_HEART, SK_CIRCLE
 };
 
 struct Skin {
@@ -600,7 +601,7 @@ struct Skin {
     COLORREF main, dark, accent;
 };
 
-static Skin skins[12] = {
+static Skin skins[16] = {
     { "Classic",  0,   SK_SQUARE,  RGB(0, 220, 120),  RGB(0, 140, 80),   RGB(255, 255, 255) },
     { "Rounded",  20,  SK_ROUNDED, RGB(60, 160, 255),  RGB(30, 90, 180),  RGB(200, 240, 255) },
     { "Bolt",     35,  SK_BOLT,    RGB(255, 210, 40),  RGB(180, 130, 10), RGB(40, 30, 10) },
@@ -613,6 +614,10 @@ static Skin skins[12] = {
     { "Neon Ring",210, SK_RING,    RGB(20, 20, 35),    RGB(10, 10, 20),   RGB(0, 240, 255) },
     { "Crown",    260, SK_CROWN,   RGB(255, 190, 30),  RGB(170, 120, 10), RGB(255, 255, 255) },
     { "Diamond",  320, SK_DIAMOND, RGB(80, 200, 255),  RGB(20, 110, 180), RGB(240, 255, 255) },
+    { "Triangle", 400, SK_TRIANGLE, RGB(255, 140, 50), RGB(170, 80, 10),  RGB(255, 245, 210) },
+    { "Hexagon",  520, SK_HEX,     RGB(0, 230, 170),   RGB(0, 130, 100),  RGB(255, 255, 255) },
+    { "Heart",    680, SK_HEART,   RGB(255, 80, 110),  RGB(180, 30, 60),  RGB(255, 205, 215) },
+    { "Orb",      850, SK_CIRCLE,  RGB(130, 95, 255),  RGB(75, 40, 190),  RGB(255, 255, 255) },
 };
 
 static HBITMAP g_photo = NULL;
@@ -661,6 +666,7 @@ struct SaveData {
     int muted;
     int customHue[3];
     char photoPath[260];
+    int labOwned;
 };
 static SaveData save;
 
@@ -683,6 +689,7 @@ static void loadGame() {
     save.customHue[0] = 145;
     save.customHue[1] = 170;
     save.customHue[2] = 200;
+    save.labOwned = 0;
     FILE* f = fopen("geometry_dash_save.dat", "rb");
     if (!f) return;
     size_t n = fread(&save, 1, sizeof(save), f);
@@ -695,19 +702,27 @@ static void loadGame() {
         save.customHue[2] = 200;
         return;
     }
-    if (n < sizeof(save)) {
+    const size_t v2Size = sizeof(save) - 4;
+    if (n < v2Size) {
         save.customHue[0] = 145;
         save.customHue[1] = 170;
         save.customHue[2] = 200;
         save.photoPath[0] = 0;
+        save.labOwned = 0;
+    } else if (n == v2Size) {
+        save.labOwned = (save.owned & (1u << 12)) ? 1 : 0;
+        save.owned &= ~(1u << 12);
+        if (save.equipped == 12) save.equipped = 16;
+    } else {
+        save.labOwned = save.labOwned ? 1 : 0;
     }
     save.photoPath[sizeof(save.photoPath) - 1] = 0;
     save.version = 2;
     save.unlocked = imin(imax(save.unlocked, 0), LEVELS - 1);
-    if (save.owned & (1u << 12)) {
-        save.equipped = imin(imax(save.equipped, 0), 12);
+    if (save.equipped == 16) {
+        if (!save.labOwned) save.equipped = 0;
     } else {
-        save.equipped = imin(imax(save.equipped, 0), 11);
+        save.equipped = imin(imax(save.equipped, 0), 15);
     }
     save.owned |= 1;
     muted = save.muted != 0;
@@ -834,9 +849,9 @@ static COLORREF customColor(int i) {
     if (i == 1) return hslToColor(save.customHue[1], 80, 33);
     return hslToColor(save.customHue[2], 100, 70);
 }
-static COLORREF skinMain() { return save.equipped == 12 ? customColor(0) : skins[save.equipped].main; }
-static COLORREF skinDark() { return save.equipped == 12 ? customColor(1) : skins[save.equipped].dark; }
-static COLORREF skinAccent() { return save.equipped == 12 ? customColor(2) : skins[save.equipped].accent; }
+static COLORREF skinMain() { return save.equipped == 16 ? customColor(0) : skins[save.equipped].main; }
+static COLORREF skinDark() { return save.equipped == 16 ? customColor(1) : skins[save.equipped].dark; }
+static COLORREF skinAccent() { return save.equipped == 16 ? customColor(2) : skins[save.equipped].accent; }
 
 static void spawnDeath() {
     COLORREF cols[4] = { skinMain(), skinDark(), skinAccent(), RGB(255, 255, 255) };
@@ -1289,7 +1304,7 @@ static void frameInput() {
     if (state == ST_MENU) {
         if (escEdge && g_fullscreen) toggleFullscreen();
         if (btnClick(Btn{ 330, 250, 300, 62 })) { state = ST_SELECT; playSfx(SFX_CLICK); }
-        else if (btnClick(Btn{ 330, 330, 300, 62 })) { state = ST_SHOP; shopSel = save.equipped; playSfx(SFX_CLICK); }
+        else if (btnClick(Btn{ 330, 330, 300, 62 })) { state = ST_SHOP; shopSel = imin(15, save.equipped); playSfx(SFX_CLICK); }
         else if (spaceEdge || enterEdge) { state = ST_SELECT; playSfx(SFX_CLICK); }
     } else if (state == ST_SELECT) {
         if (leftEdge) { curLevel = imax(0, curLevel - 1); playSfx(SFX_CLICK); }
@@ -1309,26 +1324,26 @@ static void frameInput() {
         }
     } else if (state == ST_SHOP) {
         if (leftEdge) { shopSel = imax(0, shopSel - 1); playSfx(SFX_CLICK); }
-        if (rightEdge) { shopSel = imin(11, shopSel + 1); playSfx(SFX_CLICK); }
+        if (rightEdge) { shopSel = imin(15, shopSel + 1); playSfx(SFX_CLICK); }
         if (upEdge) { shopSel = imax(0, shopSel - 4); playSfx(SFX_CLICK); }
-        if (downEdge) { shopSel = imin(11, shopSel + 4); playSfx(SFX_CLICK); }
+        if (downEdge) { shopSel = imin(15, shopSel + 4); playSfx(SFX_CLICK); }
         if (enterEdge || spaceEdge) buyOrEquip(shopSel);
         if (escEdge) { state = ST_MENU; playSfx(SFX_CLICK); }
-        for (int i = 0; i < 12; i++) {
-            double cx = 48 + (i % 4) * 216, cy = 76 + (i / 4) * 142;
-            if (clickEdge && mx >= cx && mx < cx + 200 && my >= cy && my < cy + 130) {
+        for (int i = 0; i < 16; i++) {
+            double cx = 48 + (i % 4) * 216, cy = 76 + (i / 4) * 106;
+            if (clickEdge && mx >= cx && mx < cx + 200 && my >= cy && my < cy + 100) {
                 shopSel = i;
                 buyOrEquip(i);
                 break;
             }
         }
         if (btnClick(Btn{ 230, 496, 500, 36 })) {
-            if (save.owned & (1u << 12)) {
+            if (save.labOwned) {
                 state = ST_LAB;
                 playSfx(SFX_CLICK);
             } else if (save.shards >= 10000) {
                 save.shards -= 10000;
-                save.owned |= (1u << 12);
+                save.labOwned = 1;
                 saveGame();
                 state = ST_LAB;
                 playSfx(SFX_BUY);
@@ -1396,7 +1411,7 @@ static void frameInput() {
             playSfx(SFX_CLICK);
             showToast("PHOTO CLEARED");
         } else if (btnClick(Btn{ 600, 372, 240, 46 })) {
-            save.equipped = 12;
+            save.equipped = 16;
             saveGame();
             playSfx(SFX_BUY);
             showToast("CUSTOM CUBE EQUIPPED");
@@ -1593,7 +1608,7 @@ static void drawFace(HDC hdc, double cx, double cy, double r, int tier) {
 
 static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, int skinIdx,
                          double sxK = 1.0, double syK = 1.0) {
-    if (skinIdx == 12) {
+    if (skinIdx == 16) {
         double a = rot * PI / 180.0;
         double ca = cos(a), sa = sin(a);
         auto rp = [&](double px, double py) {
@@ -1787,6 +1802,51 @@ static void drawSkinCube(HDC hdc, double cx, double cy, double rot, double h, in
         fillPoly(hdc, g, 4, sk.dark, sk.dark, 1);
         break;
     }
+    case SK_TRIANGLE: {
+        POINT t[3] = { rp(0, -h), rp(h * 0.95, h * 0.8), rp(-h * 0.95, h * 0.8) };
+        fillPoly(hdc, t, 3, sk.main, RGB(255, 255, 255), 3);
+        gloss(h * 0.55, sk.main);
+        POINT t2[3] = { rp(0, -h * 0.3), rp(h * 0.38, h * 0.42), rp(-h * 0.38, h * 0.42) };
+        fillPoly(hdc, t2, 3, sk.dark, sk.dark, 1);
+        fillCircle(hdc, cx, cy + h * 0.2, h * 0.13, sk.accent);
+        break;
+    }
+    case SK_HEX: {
+        POINT hx[6], hx2[6];
+        for (int i = 0; i < 6; i++) {
+            double ang = -PI / 2 + i * PI / 3;
+            hx[i] = rp(cos(ang) * h, sin(ang) * h);
+            hx2[i] = rp(cos(ang) * h * 0.52, sin(ang) * h * 0.52);
+        }
+        fillPoly(hdc, hx, 6, sk.main, RGB(255, 255, 255), 3);
+        fillPoly(hdc, hx2, 6, sk.dark, sk.dark, 1);
+        fillCircle(hdc, cx, cy, h * 0.17, sk.accent);
+        break;
+    }
+    case SK_HEART: {
+        POINT hrt[16];
+        for (int i = 0; i < 16; i++) {
+            double t = i * (2.0 * PI / 16.0);
+            double s = sin(t);
+            double x = 16.0 * s * s * s;
+            double y = -(13.0 * cos(t) - 5.0 * cos(2 * t) - 2.0 * cos(3 * t) - cos(4 * t));
+            hrt[i] = rp(x / 17.0 * h, y / 17.0 * h);
+        }
+        fillPoly(hdc, hrt, 16, sk.main, RGB(255, 255, 255), 3);
+        POINT hs[3] = { rp(-h * 0.5, -h * 0.35), rp(-h * 0.12, -h * 0.62), rp(-h * 0.22, -h * 0.18) };
+        fillPoly(hdc, hs, 3, sk.accent, sk.accent, 1);
+        break;
+    }
+    case SK_CIRCLE: {
+        fillCircle(hdc, cx, cy, h, sk.main);
+        strokeCircle(hdc, cx, cy, h, 4, RGB(255, 255, 255));
+        strokeCircle(hdc, cx, cy, h * 0.6, 6, sk.dark);
+        fillCircle(hdc, cx, cy, h * 0.26, sk.accent);
+        COLORREF gleam = lerpColor(sk.main, RGB(255, 255, 255), 0.5);
+        POINT g2[3] = { rp(-h * 0.72, -h * 0.4), rp(-h * 0.2, -h * 0.8), rp(-h * 0.38, -h * 0.25) };
+        fillPoly(hdc, g2, 3, gleam, gleam, 1);
+        break;
+    }
     }
 }
 
@@ -1808,6 +1868,42 @@ static void drawBackground(HDC hdc) {
         int sz = (i % 7 == 0) ? 3 : 2;
         COLORREF sc = lerpColor(top, RGB(255, 255, 255), 0.35 + 0.55 * tw);
         fillRect(hdc, (int)(sx - 20), (int)sy, sz, sz, sc);
+    }
+    double sunX = 762, sunY = 128;
+    for (int i = 0; i < 12; i++) {
+        double ang = totalTime * 0.14 + i * PI / 6.0;
+        double r0 = 52, r1 = 84 + sin(totalTime * 2.0 + i * 1.3) * 7;
+        POINT ray[3] = { {(int)(sunX + cos(ang - 0.07) * r0), (int)(sunY + sin(ang - 0.07) * r0)},
+                         {(int)(sunX + cos(ang) * r1), (int)(sunY + sin(ang) * r1)},
+                         {(int)(sunX + cos(ang + 0.07) * r0), (int)(sunY + sin(ang + 0.07) * r0)} };
+        fillPoly(hdc, ray, 3, lerpColor(top, RGB(255, 214, 90), 0.18 + pulse * 0.1),
+                 lerpColor(top, RGB(255, 214, 90), 0.18 + pulse * 0.1), 1);
+    }
+    fillCircle(hdc, sunX, sunY, 44 + pulse * 5, RGB(255, 196, 60));
+    fillCircle(hdc, sunX, sunY, 33 + pulse * 4, RGB(255, 226, 110));
+    fillCircle(hdc, sunX, sunY, 21 + pulse * 3, RGB(255, 248, 190));
+    double mtnBase = FLOOR_Y * 0.62 + 6;
+    for (int layer = 0; layer < 2; layer++) {
+        double par = layer == 0 ? 0.10 : 0.18;
+        double step = 96.0;
+        double off = fmod(camX * par, step);
+        if (off < 0) off += step;
+        double hAmp = layer == 0 ? 100.0 : 66.0;
+        COLORREF mc = hslToColor(h + 30, layer == 0 ? 38 : 46, layer == 0 ? 13 : 10);
+        COLORREF rim = hslToColor(h + 140, 90, layer == 0 ? 42 : 36);
+        for (int k = -1; k < WINDOW_W / (int)step + 2; k++) {
+            int seg = (((k + layer * 5) % 4) + 4) % 4;
+            double peakH = hAmp * ((seg == 0) ? 1.0 : (seg == 1 ? 0.68 : (seg == 2 ? 0.92 : 0.55)));
+            POINT tri[3] = { {(int)(k * step - off), (int)mtnBase},
+                             {(int)(k * step - off + step * 0.5), (int)(mtnBase - peakH)},
+                             {(int)(k * step - off + step), (int)mtnBase} };
+            fillPoly(hdc, tri, 3, mc, mc, 1);
+            POINT cap[3] = { {(int)(k * step - off + step * 0.5), (int)(mtnBase - peakH)},
+                             {(int)(k * step - off + step * 0.5 + 15), (int)(mtnBase - peakH + 24)},
+                             {(int)(k * step - off + step * 0.5 - 15), (int)(mtnBase - peakH + 24)} };
+            fillPoly(hdc, cap, 3, rim, rim, 1);
+        }
+        fillRect(hdc, -40, (int)mtnBase - 2, WINDOW_W + 80, 5, mc);
     }
     double skyY = FLOOR_Y * 0.62;
     double bOff = fmod(camX * 0.14, 560.0);
@@ -1856,6 +1952,19 @@ static void drawBackground(HDC hdc) {
             if (s.filled) fillRect(hdc, (int)(s.x + 8), (int)(s.y + 8), (int)(s.size - 16), (int)(s.size - 16), fill);
             strokeRect(hdc, s.x, s.y, s.size, s.size, 3, line);
         }
+    }
+    for (int i = 0; i < 22; i++) {
+        double period = 6.5 + (i % 5);
+        double t = fmod(totalTime * (0.9 + (i % 3) * 0.2) + i * 1.37, period);
+        double ex = fmod(i * 137.0 - camX * (0.25 + (i % 4) * 0.07), WINDOW_W + 120.0);
+        if (ex < -30) ex += WINDOW_W + 120.0;
+        double ey = FLOOR_Y * 0.95 - (t / period) * FLOOR_Y * 0.78;
+        double br = sin(PI * t / period);
+        if (br < 0) br = 0;
+        COLORREF ec = lerpColor(lerpColor(top, RGB(255, 255, 255), 0.25),
+                                hslToColor(((h + (int)i * 47) % 360 + 360) % 360, 100, 62),
+                                0.35 + 0.65 * br);
+        fillRect(hdc, (int)ex, (int)ey, 3, 3 + (i % 2), ec);
     }
     double gy = FLOOR_Y * 0.62;
     double hzOff = fmod(camX * 0.35, 64.0);
@@ -2159,31 +2268,30 @@ static void drawShopUI(HDC hdc) {
     char buf[96];
     drawTextC(hdc, "ICON SHOP", WINDOW_W / 2, 14, 34, RGB(255, 255, 255));
     drawShardCount(hdc, WINDOW_W - 150, 16);
-    for (int i = 0; i < 12; i++) {
-        double cx = 48 + (i % 4) * 216, cy = 76 + (i / 4) * 142;
+    for (int i = 0; i < 16; i++) {
+        double cx = 48 + (i % 4) * 216, cy = 76 + (i / 4) * 106;
         bool owned = (save.owned & (1u << i)) != 0;
         bool equipped = save.equipped == i;
         bool sel = shopSel == i;
         COLORREF col = equipped ? RGB(28, 85, 55) : (owned ? RGB(35, 50, 95) : RGB(45, 45, 62));
         if (sel) col = brighten(col, 40);
-        fillRect(hdc, (int)cx, (int)cy, 200, 130, col);
-        strokeRect(hdc, cx, cy, 200, 130, sel ? 3 : 2, sel ? RGB(255, 255, 160) : RGB(120, 130, 160));
-        drawSkinCube(hdc, cx + 100, cy + 50, totalTime * 90.0 + i * 30.0, 26, i);
+        fillRect(hdc, (int)cx, (int)cy, 200, 100, col);
+        strokeRect(hdc, cx, cy, 200, 100, sel ? 3 : 2, sel ? RGB(255, 255, 160) : RGB(120, 130, 160));
+        drawSkinCube(hdc, cx + 100, cy + 36, totalTime * 90.0 + i * 30.0, 22, i);
         snprintf(buf, sizeof(buf), "%s", skins[i].name);
-        drawTextC(hdc, buf, (int)(cx + 100), (int)(cy + 88), 20, RGB(255, 255, 255));
-        if (equipped) drawTextC(hdc, "EQUIPPED", (int)(cx + 100), (int)(cy + 112), 17, RGB(120, 255, 160));
-        else if (owned) drawTextC(hdc, "OWNED - CLICK TO EQUIP", (int)(cx + 100), (int)(cy + 112), 15, RGB(170, 210, 255));
+        drawTextC(hdc, buf, (int)(cx + 100), (int)(cy + 62), 18, RGB(255, 255, 255));
+        if (equipped) drawTextC(hdc, "EQUIPPED", (int)(cx + 100), (int)(cy + 82), 15, RGB(120, 255, 160));
+        else if (owned) drawTextC(hdc, "OWNED - CLICK TO EQUIP", (int)(cx + 100), (int)(cy + 82), 13, RGB(170, 210, 255));
         else {
-            drawShard(hdc, cx + 62, cy + 119, 9);
+            drawShard(hdc, cx + 62, cy + 89, 8);
             snprintf(buf, sizeof(buf), "%d", skins[i].price);
-            drawText(hdc, buf, (int)cx + 78, (int)(cy + 109), 18,
+            drawText(hdc, buf, (int)cx + 76, (int)(cy + 80), 16,
                      save.shards >= skins[i].price ? RGB(160, 220, 255) : RGB(255, 140, 140));
         }
     }
-    bool labOwned = (save.owned & (1u << 12)) != 0;
     drawBtn(hdc, Btn{ 230, 496, 500, 36 },
-            labOwned ? "OPEN COLOR LAB - DESIGN YOUR CUBE" : "COLOR LAB - 10000 SHARDS", 20,
-            labOwned ? RGB(170, 120, 255) : (save.shards >= 10000 ? RGB(70, 220, 130) : RGB(95, 95, 115)));
+            save.labOwned ? "OPEN COLOR LAB - DESIGN YOUR CUBE" : "COLOR LAB - 10000 SHARDS", 20,
+            save.labOwned ? RGB(170, 120, 255) : (save.shards >= 10000 ? RGB(70, 220, 130) : RGB(95, 95, 115)));
     if (toastT > 0 && toastText[0]) drawTextC(hdc, toastText, WINDOW_W / 2, 466, 22, RGB(255, 230, 100));
 }
 
@@ -2191,7 +2299,7 @@ static void drawLabUI(HDC hdc) {
     char buf[96];
     drawTextC(hdc, "COLOR LAB", WINDOW_W / 2, 14, 34, RGB(255, 255, 255));
     drawShardCount(hdc, WINDOW_W - 150, 16);
-    drawSkinCube(hdc, 480, 118, totalTime * 90.0, 40, 12);
+    drawSkinCube(hdc, 480, 118, totalTime * 90.0, 40, 16);
     const char* names[3] = { "PRIMARY", "SECONDARY", "GLOW" };
     for (int i = 0; i < 3; i++) {
         double sy = 200 + i * 58;
@@ -2210,7 +2318,7 @@ static void drawLabUI(HDC hdc) {
     drawBtn(hdc, Btn{ 360, 372, 220, 46 }, "CLEAR PHOTO", 22, RGB(255, 120, 120));
     drawBtn(hdc, Btn{ 600, 372, 240, 46 }, "EQUIP CUBE", 22, RGB(70, 220, 130));
     snprintf(buf, sizeof(buf), "%s   -   %s", g_photo ? "PHOTO: LOADED" : "PHOTO: NONE",
-             (save.equipped == 12) ? "EQUIPPED" : "NOT EQUIPPED");
+             (save.equipped == 16) ? "EQUIPPED" : "NOT EQUIPPED");
     drawTextC(hdc, buf, WINDOW_W / 2, 432, 18, g_photo ? RGB(160, 220, 255) : RGB(200, 205, 225));
     drawBtn(hdc, Btn{ 380, 466, 200, 46 }, "BACK", 22, RGB(120, 130, 160));
     if (toastT > 0 && toastText[0]) drawTextC(hdc, toastText, WINDOW_W / 2, 452, 20, RGB(255, 230, 100));
