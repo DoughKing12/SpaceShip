@@ -479,7 +479,7 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
     int pool[16];
     int n = 0;
     auto add = [&](int id) { if (id != lastAtom) pool[n++] = id; };
-    add(0); add(1); add(2); add(3); add(4);
+    add(0); add(1); add(2); add(3); add(4); add(13); add(14);
     if (tier >= 1) { add(5); }
     if (tier >= 2) { add(6); add(9); add(12); }
     if (tier >= 3) { add(7); add(8); }
@@ -503,6 +503,8 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
     case 11: addSpike(s + 2, ROWS - 1); addSpike(s + 9, ROWS - 1); addSpike(s + 11, ROWS - 1); return s + 12;
     case 12: addBlock(s + 5, 0, s + 15, 0); addOrbBlue(s + 6, 10); addOrbBlue(s + 11, 2); addOrbBlue(s + 13, 2);
              return s + 21;
+    case 13: addBlock(s + 4, ROWS - 1, s + 6, ROWS - 1); addSpike(s + 9, ROWS - 1); return s + 10;
+    case 14: addSpike(s + 2, ROWS - 1); addSpike(s + 5, ROWS - 1); addSpike(s + 8, ROWS - 1); return s + 9;
     }
     return s + 3;
 }
@@ -517,7 +519,7 @@ static void emitSpecial(int s, int len, int mode, int tier) {
         while (c < end) {
             if (i % 2 == 0) { addSpike(c, ROWS - 1); if (tier >= 2 && rndR(0, 99) < 55) addSpike(c + 1, ROWS - 1); }
             else { addSpikeD(c, 2); if (tier >= 2 && rndR(0, 99) < 55) addSpikeD(c + 1, 2); }
-            c += (tier >= 4 ? 5 : tier >= 2 ? 6 : 7);
+            c += (tier >= 4 ? 5 : tier >= 1 ? 6 : 7);
             i++;
         }
     } else if (mode == 3) {
@@ -525,14 +527,14 @@ static void emitSpecial(int s, int len, int mode, int tier) {
         while (c < end) {
             if (i % 2 == 0) addBlock(c, ROWS - 3, c + 1, ROWS - 1);
             else addBlock(c, 0, c + 1, 5);
-            c += (tier >= 4 ? 5 : tier >= 2 ? 6 : 7);
+            c += (tier >= 4 ? 5 : tier >= 1 ? 6 : 7);
             i++;
         }
     } else if (mode == 2) {
         while (c < end) {
             addSpike(c, ROWS - 1);
             if (tier >= 2 && rndR(0, 99) < 55) addSpike(c + 1, ROWS - 1);
-            c += (tier >= 4 ? 6 : tier >= 2 ? 8 : 9);
+            c += (tier >= 4 ? 6 : tier >= 1 ? 7 : 9);
         }
     } else {
         int i = 0;
@@ -559,17 +561,18 @@ static void genLevel(int idx) {
     int tier = levelTier(idx);
     int len = 170 + idx * 6;
     if (len > 470) len = 470;
-    int gap = 6 - imin(3, tier);
-    int cursor = 12;
+    int gap = imax(3, 5 - tier);
+    if (idx % 10 >= 7) gap = imax(3, gap - 1);
+    int cursor = 10;
     int lastSpecial = -200;
-    while (cursor < len - 28) {
+    while (cursor < len - 24) {
         int modesAllowed[4];
         int nm = 0;
         if (idx >= 5) modesAllowed[nm++] = 1;
         if (idx >= 10) modesAllowed[nm++] = 2;
         if (idx >= 15) modesAllowed[nm++] = 3;
         if (idx >= 20) modesAllowed[nm++] = 0;
-        bool wantSpecial = nm > 0 && (cursor - lastSpecial) > 44 && (cursor < len - 70) && (rndR(0, 99) < 36 + tier * 4);
+        bool wantSpecial = nm > 0 && (cursor - lastSpecial) > 36 && (cursor < len - 64) && (rndR(0, 99) < 44 + tier * 5);
         if (wantSpecial) {
             int mode = modesAllowed[rndR(0, nm - 1)];
             int slen = rndR(30, 42);
