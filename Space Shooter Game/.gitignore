@@ -1,0 +1,8 @@
+*.exe
+*.o
+*.obj
+space_shooter_save.dat
+geometry_dash_save.dat
+geometry_dash_music*.wav
+gd_frame.bmp
+build_err.txt

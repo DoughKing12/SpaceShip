@@ -474,6 +474,7 @@ static void addOrb(int c, int r) { objs.push_back(Obj{ OBJ_ORB, (double)c * CELL
 static void addOrbBlue(int c, int r) { objs.push_back(Obj{ OBJ_ORB_BLUE, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
 static void addGravPortal(int c) { objs.push_back(Obj{ OBJ_GRAVPORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, 0 }); }
 static void addPad(int c, int r) { objs.push_back(Obj{ OBJ_PAD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL / 2.0, 0 }); }
+static void addPadStrong(int c, int r) { objs.push_back(Obj{ OBJ_PAD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL / 2.0, 1 }); }
 static void addPortal(int mode, int c) { objs.push_back(Obj{ OBJ_PORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, mode }); }
 static void addShard(int c, int r) { objs.push_back(Obj{ OBJ_SHARD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
 
@@ -484,7 +485,7 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
     add(0); add(1); add(2); add(3); add(4); add(13); add(14); add(15); add(16); add(22);
     if (tier >= 1) { add(5); add(17); }
     if (tier >= 2) { add(6); add(9); add(12); add(18); add(19); add(23); }
-    if (tier >= 3) { add(7); add(8); add(20); add(21); }
+    if (tier >= 3) { add(7); add(8); add(20); add(21); add(25); }
     if (tier >= 4) { add(10); add(11); add(7); add(8); add(19); add(20); add(23); }
     int pick = pool[rndR(0, n - 1)];
     gLastAtom = pick;
@@ -521,6 +522,7 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
              addBlock(s + 24, 8, s + 25, ROWS - 1); addGravPortal(s + 18);
              addSpikeD(s + 31, 2); addSpikeD(s + 32, 2); addGravPortal(s + 28);
              addSpike(s + 37, ROWS - 1); addSpike(s + 38, ROWS - 1); return s + 43;
+    case 25: addPadStrong(s + 3, ROWS - 1); addBlock(s + 10, ROWS - 3, s + 11, ROWS - 1); addSpike(s + 14, ROWS - 1); return s + 17;
     }
     return s + 3;
 }
@@ -1131,7 +1133,7 @@ static void checkInteractions() {
             bool over = rectOverlap(pl.x - P_HALF, pl.y - P_HALF, P_HALF * 2, P_HALF * 2, o.x, o.y, o.w, o.h);
             if (over && !trigUsed[i]) {
                 trigUsed[i] = 1;
-                pl.vy = -JUMP_V * 1.08 * pl.grav;
+                pl.vy = -JUMP_V * (o.mode == 1 ? 1.45 : 1.08) * pl.grav;
                 pl.onGround = false;
                 playSfx(SFX_ORB);
                 spawnSpark(o.x + 20, o.y, RGB(255, 225, 80));
@@ -1291,6 +1293,8 @@ static double beatPulse() {
 }
 
 static void update(double dt) {
+    if ((state == ST_MENU || state == ST_SELECT || state == ST_SHOP || state == ST_LAB) && !musicWant)
+        startMusic(curLevel % 3);
     totalTime += dt;
     if (toastT > 0) toastT -= dt;
     updateBgShapes(dt);
@@ -2193,9 +2197,11 @@ static void drawObjects(HDC hdc) {
         }
         case OBJ_PAD: {
             double cx = sx + 20, cy = o.y + o.h;
-            fillEllipse(hdc, cx, cy, 20, 8, hslToColor(48, 100, 55));
+            COLORREF pbase = (o.mode == 1) ? hslToColor(18, 100, 55) : hslToColor(48, 100, 55);
+            COLORREF ptop = (o.mode == 1) ? hslToColor(18, 100, 74) : hslToColor(48, 100, 72);
+            fillEllipse(hdc, cx, cy, 20, 8, pbase);
             strokeEllipse(hdc, cx, cy, 20, 8, 2, RGB(255, 255, 255));
-            fillEllipse(hdc, cx, cy - 4, 12, 5, hslToColor(48, 100, 72));
+            fillEllipse(hdc, cx, cy - 4, 12, 5, ptop);
             break;
         }
         case OBJ_PORTAL: {
