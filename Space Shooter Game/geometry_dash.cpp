@@ -788,6 +788,7 @@ static bool jumpHeldPrev = false;
 static bool clickEdge = false;
 static int mx = -100, my = -100;
 static bool jumpEdgePending = false;
+static double lastJumpT = -10.0;
 static char toastText[64];
 static double toastT = 0;
 static int lastEarned = 0;
@@ -1066,7 +1067,7 @@ static void checkInteractions() {
             if (trigUsed[i]) continue;
             double cx = o.x + 20, cy = o.y + 20;
             double dx = pl.x - cx, dy = pl.y - cy;
-            if (dx * dx + dy * dy < ORB_R * ORB_R && jumpHeld) {
+            if (dx * dx + dy * dy < ORB_R * ORB_R && (jumpHeld || totalTime - lastJumpT < 0.16)) {
                 trigUsed[i] = 1;
                 if (o.t == OBJ_ORB) {
                     pl.vy = -JUMP_V * pl.grav;
@@ -1081,14 +1082,15 @@ static void checkInteractions() {
                 pl.onGround = false;
             }
         } else if (o.t == OBJ_PAD) {
-            if (rectOverlap(pl.x - P_HALF, pl.y - P_HALF, P_HALF * 2, P_HALF * 2, o.x, o.y, o.w, o.h)) {
-                if (!trigUsed[i]) {
-                    trigUsed[i] = 1;
-                    pl.vy = -JUMP_V * 1.08 * pl.grav;
-                    pl.onGround = false;
-                    playSfx(SFX_ORB);
-                    spawnSpark(o.x + 20, o.y, RGB(255, 225, 80));
-                }
+            bool over = rectOverlap(pl.x - P_HALF, pl.y - P_HALF, P_HALF * 2, P_HALF * 2, o.x, o.y, o.w, o.h);
+            if (over && !trigUsed[i]) {
+                trigUsed[i] = 1;
+                pl.vy = -JUMP_V * 1.08 * pl.grav;
+                pl.onGround = false;
+                playSfx(SFX_ORB);
+                spawnSpark(o.x + 20, o.y, RGB(255, 225, 80));
+            } else if (!over && trigUsed[i]) {
+                trigUsed[i] = 0;
             }
         } else if (o.t == OBJ_SHARD) {
             if (!trigUsed[i] && rectOverlap(pl.x - P_HALF, pl.y - P_HALF, P_HALF * 2, P_HALF * 2, o.x + 4, o.y + 4, 32, 32)) {
@@ -1319,7 +1321,7 @@ static void frameInput() {
         else if (state == ST_PLAY && !paused) resumeMusic();
         if (!muted) playSfx(SFX_CLICK);
     }
-    if (jEdge && state == ST_PLAY && !paused) jumpEdgePending = true;
+    if (jEdge && state == ST_PLAY && !paused) { jumpEdgePending = true; lastJumpT = totalTime; }
 
     if (state == ST_MENU) {
         if (escEdge && g_fullscreen) toggleFullscreen();
@@ -1412,7 +1414,7 @@ static void frameInput() {
             for (int sIdx = 0; sIdx < 3; sIdx++) {
                 double sy = 200 + sIdx * 58;
                 if (mx >= 300 && mx < 700 && my >= sy && my < sy + 30) {
-                    int hue = (int)((mx - 300) / 400.0 * 359.0);
+                    int hue = (int)((mx - 300) / 399.0 * 359.0);
                     save.customHue[sIdx] = imin(imax(hue, 0), 359);
                     labDrag = true;
                 }
