@@ -473,10 +473,11 @@ static void addBlock(int c0, int r0, int c1, int r1) {
 static void addOrb(int c, int r) { objs.push_back(Obj{ OBJ_ORB, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
 static void addOrbBlue(int c, int r) { objs.push_back(Obj{ OBJ_ORB_BLUE, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
 static void addGravPortal(int c) { objs.push_back(Obj{ OBJ_GRAVPORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, 0 }); }
+static void addSpeedUp(int c) { objs.push_back(Obj{ OBJ_PORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, 6 }); }
 static void addPad(int c, int r) { objs.push_back(Obj{ OBJ_PAD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL / 2.0, 0 }); }
 static void addPadStrong(int c, int r) { objs.push_back(Obj{ OBJ_PAD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL / 2.0, 1 }); }
 static void addPortal(int mode, int c) { objs.push_back(Obj{ OBJ_PORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, mode }); }
-static void addShard(int c, int r) { objs.push_back(Obj{ OBJ_SHARD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
+static void addShard(int c, int r, int big = 0) { objs.push_back(Obj{ OBJ_SHARD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, big }); }
 
 static int emitCubeAtom(int s, int tier, int lastAtom) {
     int pool[28];
@@ -609,7 +610,7 @@ static void genLevel(int idx) {
             int slen = (mode == 4) ? rndR(46, 64) : rndR(26, 46);
             if (cursor + slen < len - 14) {
                 emitSpecial(cursor, slen, mode, tier);
-                if (rndR(0, 99) < 70) addShard(cursor + slen + 1, 9);
+                if (rndR(0, 99) < 70) addShard(cursor + slen + 1, 9, rndR(0, 99) < 10 ? 1 : 0);
                 lastSpecial = cursor;
                 cursor += slen + gap + 2;
                 gLastAtom = -1;
@@ -618,7 +619,8 @@ static void genLevel(int idx) {
         }
         int end = emitCubeAtom(cursor, tier, gLastAtom);
         cursor = end + gap;
-        if (rndR(0, 99) < 45 && cursor < len - 8) addShard(end + gap / 2, rndR(9, 10));
+        if (rndR(0, 99) < 45 && cursor < len - 8) addShard(end + gap / 2, rndR(9, 10), rndR(0, 99) < 8 ? 1 : 0);
+        else if (tier >= 1 && rndR(0, 99) < 18 && cursor < len - 30) addSpeedUp(end + gap / 2);
     }
     finishX = (double)(len - 6) * CELL;
     objs.push_back(Obj{ OBJ_FINISH, finishX, 0.0, (double)(CELL * 2), (double)FLOOR_Y, 0 });
@@ -704,6 +706,7 @@ struct SaveData {
     char photoPath[260];
     int labOwned;
     unsigned char drawCells[144];
+    int totalDeaths;
 };
 static SaveData save;
 
@@ -949,7 +952,9 @@ static void die() {
     playSfx(SFX_DIE);
     spawnDeath();
     int p = (int)pct;
-    if (p > save.best[curLevel]) { save.best[curLevel] = p; saveGame(); }
+    if (!practice && p > save.best[curLevel]) { save.best[curLevel] = p; showToast("NEW BEST!"); }
+    save.totalDeaths++;
+    saveGame();
 }
 
 static void winGame() {
@@ -1141,16 +1146,25 @@ static void checkInteractions() {
                 trigUsed[i] = 0;
             }
         } else if (o.t == OBJ_SHARD) {
-            if (!trigUsed[i] && rectOverlap(pl.x - P_HALF, pl.y - P_HALF, P_HALF * 2, P_HALF * 2, o.x + 4, o.y + 4, 32, 32)) {
+            if (!trigUsed[i] && rectOverlap(pl.x - P_HALF, pl.y - P_HALF, P_HALF * 2, P_HALF * 2,
+                    o.x + 4 - (o.mode ? 8 : 0), o.y + 4 - (o.mode ? 8 : 0),
+                    o.mode ? 48 : 32, o.mode ? 48 : 32)) {
                 trigUsed[i] = 1;
-                save.shards += 5;
+                save.shards += o.mode ? 25 : 5;
                 saveGame();
                 playSfx(SFX_COIN);
                 spawnSpark(o.x + 20, o.y + 20, RGB(255, 225, 80));
             }
         } else if (o.t == OBJ_PORTAL) {
             double cx = o.x + 20;
-            if (fabs(pl.x - cx) < 26) changeMode(o.mode);
+            if (o.mode == 6) {
+                if (fabs(pl.x - cx) < 26 && !trigUsed[i]) {
+                    trigUsed[i] = 1;
+                    gSpeed = clampD(gSpeed + 25.0, 380.0, 560.0);
+                    playSfx(SFX_PORTAL);
+                    spawnSpark(cx, FLOOR_Y - 56, RGB(80, 255, 110));
+                }
+            } else if (fabs(pl.x - cx) < 26) changeMode(o.mode);
         } else if (o.t == OBJ_GRAVPORTAL) {
             double cx = o.x + 20;
             if (fabs(pl.x - cx) < 26 && !trigUsed[i]) {
@@ -2210,13 +2224,14 @@ static void drawObjects(HDC hdc) {
             if (o.mode == MODE_SHIP) { col = RGB(0, 225, 255); col2 = RGB(170, 250, 255); }
             else if (o.mode == MODE_BALL) { col = RGB(255, 120, 40); col2 = RGB(255, 210, 160); }
             else if (o.mode == MODE_UFO) { col = RGB(200, 90, 255); col2 = RGB(240, 190, 255); }
+            else if (o.mode == 6) { col = RGB(80, 255, 110); col2 = RGB(200, 255, 215); }
             else { col = RGB(120, 255, 140); col2 = RGB(210, 255, 220); }
             fillEllipse(hdc, cx, cy, 17, 52, RGB(18, 18, 30));
             strokeEllipse(hdc, cx, cy, 17, 52, 4, col);
             strokeEllipse(hdc, cx, cy, 10, 40, 2, col2);
             fillEllipse(hdc, cx, cy, 4, 15, RGB(255, 255, 255));
-            const char* letters[4] = { "C", "S", "B", "U" };
-            drawTextC(hdc, letters[imin(o.mode, 3)], (int)cx - 4, (int)cy - 34, 16, col2);
+            const char* letters[7] = { "C", "S", "B", "U", "G", "G", ">" };
+            drawTextC(hdc, letters[imin(o.mode, 6)], (int)cx - 4, (int)cy - 34, 16, col2);
             break;
         }
         case OBJ_GRAVPORTAL: {
@@ -2234,8 +2249,10 @@ static void drawObjects(HDC hdc) {
             if (trigUsed[i]) break;
             double by = o.y + 20 + sin(totalTime * 3.0 + (double)i) * 4.0;
             double pw = 1.0 + 0.15 * sin(totalTime * 5.0 + (double)i);
-            strokeCircle(hdc, sx + 20, by, 15 * pw, 3, hslToColor(48, 100, 62));
-            drawShard(hdc, sx + 20, by, 9 * pw);
+            double sc = o.mode ? 1.7 : 1.0;
+            strokeCircle(hdc, sx + 20, by, 15 * pw * sc, o.mode ? 4 : 3, o.mode ? hslToColor(32, 100, 66) : hslToColor(48, 100, 62));
+            drawShard(hdc, sx + 20, by, 9 * pw * sc);
+            if (o.mode) drawTextC(hdc, "+25", (int)sx + 20, (int)(by + 28), 16, RGB(255, 230, 130));
             break;
         }
         case OBJ_FINISH: {
@@ -2424,6 +2441,8 @@ static void drawMenuUI(HDC hdc) {
     for (int i = 0; i < LEVELS; i++) if (save.complete[i]) done++;
     snprintf(buf, sizeof(buf), "COMPLETED: %d / 50", done);
     drawTextC(hdc, buf, WINDOW_W / 2, 486, 22, RGB(255, 230, 120));
+    snprintf(buf, sizeof(buf), "TOTAL DEATHS: %d", save.totalDeaths);
+    drawTextC(hdc, buf, WINDOW_W / 2, 514, 18, RGB(255, 150, 150));
 }
 
 static void drawSelectUI(HDC hdc) {
