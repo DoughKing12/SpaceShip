@@ -771,6 +771,13 @@ static GameState state = ST_MENU;
 static int attempt = 1;
 static bool paused = false;
 static double deadT = 0;
+static bool practice = false;
+static bool ckptSet = false;
+static double ckX = 0, ckY = 0, ckVy = 0, ckRot = 0, ckGrav = 1;
+static bool ckGround = true;
+static int ckMode = 0;
+static double ckPct = 0;
+static std::vector<char> ckTrig;
 static double attemptT = 0;
 static double totalTime = 0;
 static double shake = 0;
@@ -883,6 +890,7 @@ static void spawnDeath() {
         spawnParticle(pl.x, pl.y, cos(a) * 100, sin(a) * 100, 0.4, 5 + frand() * 6, RGB(255, 230, 120), 2);
     }
     spawnParticle(pl.x, pl.y, 0, 0, 0.35, 20, RGB(255, 90, 90), 3);
+    spawnParticle(pl.x, pl.y, 0, 0, 0.5, 74, RGB(255, 210, 90), 4);
 }
 
 static void spawnDust() {
@@ -965,6 +973,7 @@ static void startLevel(int idx) {
     pct = 0;
     trailT = 0;
     trigUsed.assign(objs.size(), 0);
+    ckptSet = false;
     startMusic(idx % 3);
     playSfx(SFX_CLICK);
 }
@@ -983,6 +992,17 @@ static void resetAttempt() {
     plSquash = 0;
     parts.clear();
     trigUsed.assign(objs.size(), 0);
+}
+
+static void restoreCheckpoint() {
+    pl.x = ckX; pl.y = ckY; pl.vy = ckVy; pl.rot = ckRot;
+    pl.grav = ckGrav; pl.onGround = ckGround; pl.mode = ckMode;
+    attemptT = 0;
+    pct = ckPct;
+    trailT = 0;
+    plSquash = 0;
+    parts.clear();
+    trigUsed = ckTrig;
 }
 
 static bool rectOverlap(double ax, double ay, double aw, double ah, double bx, double by, double bw, double bh) {
@@ -1256,7 +1276,8 @@ static void update(double dt) {
         updateParticles(dt);
         if (deadT > 1.05) {
             attempt++;
-            resetAttempt();
+            if (practice && ckptSet) restoreCheckpoint();
+            else resetAttempt();
             state = ST_PLAY;
             startMusic(curLevel % 3);
         }
@@ -1307,6 +1328,7 @@ static void frameInput() {
     bool pEdge = keys['P'] && !keysPrev['P'];
     bool mEdge = keys['M'] && !keysPrev['M'];
     bool rEdge = keys['R'] && !keysPrev['R'];
+    bool cEdge = keys['C'] && !keysPrev['C'];
     bool enterEdge = keys[VK_RETURN] && !keysPrev[VK_RETURN];
     bool leftEdge = keys[VK_LEFT] && !keysPrev[VK_LEFT];
     bool rightEdge = keys[VK_RIGHT] && !keysPrev[VK_RIGHT];
@@ -1391,6 +1413,14 @@ static void frameInput() {
             resetAttempt();
             if (!paused) startMusic(curLevel % 3);
         }
+        if (!paused && cEdge && practice) {
+            ckptSet = true;
+            ckX = pl.x; ckY = pl.y; ckVy = pl.vy; ckRot = pl.rot;
+            ckGrav = pl.grav; ckGround = pl.onGround; ckMode = pl.mode;
+            ckPct = pct; ckTrig = trigUsed;
+            playSfx(SFX_COIN);
+            showToast("CHECKPOINT SAVED");
+        }
         if (paused) {
             if (btnClick(Btn{ 330, 250, 300, 54 })) { paused = false; pausedGlobal = false; resumeMusic(); }
             else if (btnClick(Btn{ 330, 318, 300, 54 })) {
@@ -1398,6 +1428,11 @@ static void frameInput() {
                 attempt++; resetAttempt(); startMusic(curLevel % 3);
             } else if (btnClick(Btn{ 330, 386, 300, 54 })) {
                 paused = false; pausedGlobal = false; state = ST_SELECT; stopMusic(); playSfx(SFX_CLICK);
+            } else if (btnClick(Btn{ 330, 454, 300, 50 })) {
+                practice = !practice;
+                if (!practice) ckptSet = false;
+                playSfx(SFX_CLICK);
+                showToast(practice ? "PRACTICE ON - PRESS C TO SAVE" : "PRACTICE OFF");
             }
         }
     } else if (state == ST_WIN) {
@@ -1938,6 +1973,16 @@ static void drawBackground(HDC hdc) {
         COLORREF sc = lerpColor(top, RGB(255, 255, 255), 0.35 + 0.55 * tw);
         fillRect(hdc, (int)(sx - 20), (int)sy, sz, sz, sc);
     }
+    double cometT = fmod(totalTime, 7.5);
+    if (cometT < 0.85) {
+        double ct = cometT / 0.85;
+        double x0 = 1060 - ct * 1520, y0 = 26 + ct * 300;
+        for (int k = 0; k < 9; k++) {
+            double br = (1.0 - k / 9.0) * (1.0 - ct);
+            if (br > 0.03)
+                fillRect(hdc, x0 + k * 20.0, y0 - k * 13.0, 16, 2, lerpColor(top, RGB(255, 255, 255), br));
+        }
+    }
     double sunX = 762, sunY = 128;
     for (int i = 0; i < 12; i++) {
         double ang = totalTime * 0.14 + i * PI / 6.0;
@@ -2228,8 +2273,23 @@ static void drawParticles(HDC hdc) {
             strokeCircle(hdc, p.x - camX, p.y, rr, 4, lerpColor(RGB(255, 120, 120), RGB(255, 255, 255), t));
             continue;
         }
+        if (p.kind == 4) {
+            double rr = p.size * (1.0 - t);
+            strokeCircle(hdc, p.x - camX, p.y, rr, (int)(1 + 3 * t), lerpColor(p.col, RGB(255, 255, 255), 1.0 - t));
+            continue;
+        }
         c = (p.kind == 0) ? lerpColor(fadeTo, p.col, t) : lerpColor(RGB(50, 50, 60), p.col, t);
         fillRect(hdc, (int)(p.x - camX - sz * 0.5), (int)(p.y - sz * 0.5), (int)sz, (int)sz, c);
+    }
+}
+
+static void drawSpeedLines(HDC hdc) {
+    if (state != ST_PLAY || paused) return;
+    static const double ys[5] = { 64, 140, 236, 330, 406 };
+    for (int i = 0; i < 5; i++) {
+        double lx = fmod(totalTime * gSpeed * 1.35 + i * 231.0, 1220.0) - 130.0;
+        double w = 36 + (i % 3) * 20;
+        fillRect(hdc, lx, ys[i], w, 2, RGB(205, 220, 255));
     }
 }
 
@@ -2267,6 +2327,10 @@ static void drawHUD(HDC hdc) {
         drawTextC(hdc, nm, WINDOW_W / 2, 218, 24, lerpColor(bgc, RGB(255, 240, 140), a));
     }
 
+    if (practice) {
+        drawText(hdc, "PRACTICE", 14, 60, 16, RGB(120, 255, 160));
+        drawText(hdc, ckptSet ? "C - UPDATE CHECKPOINT" : "C - DROP CHECKPOINT", 14, 80, 14, RGB(170, 175, 195));
+    }
     if (muted) drawText(hdc, "MUTED (M)", WINDOW_W - 130, 44, 16, RGB(180, 180, 190));
     if (toastT > 0 && toastText[0]) {
         double a = clampD(toastT / 0.4, 0, 1);
@@ -2431,6 +2495,12 @@ static void drawLabUI(HDC hdc) {
 static void drawWinUI(HDC hdc) {
     char buf[96];
     fillRect(hdc, 0, 0, WINDOW_W, WINDOW_H, RGB(12, 14, 26));
+    for (int i = 0; i < 46; i++) {
+        double fy = fmod(totalTime * (85.0 + (i % 6) * 28.0) + i * 63.0, 580.0) - 30.0;
+        double fx = ((i * 83) % 960) + sin(totalTime * 2.3 + i * 1.7) * 24.0;
+        COLORREF c = hslToColor((int)(i * 34.0 + totalTime * 70.0) % 360, 88, 62);
+        fillRect(hdc, fx, fy, 8 + (i % 3) * 4, 5, c);
+    }
     drawTextC(hdc, "LEVEL COMPLETE!", WINDOW_W / 2, 70, 58, RGB(120, 255, 160));
     drawShard(hdc, WINDOW_W / 2 - 70, 178, 18);
     snprintf(buf, sizeof(buf), "+%d SHARDS", lastEarned);
@@ -2452,6 +2522,8 @@ static void drawPauseUI(HDC hdc) {
     drawBtn(hdc, Btn{ 330, 250, 300, 54 }, "RESUME", 26, RGB(70, 220, 130));
     drawBtn(hdc, Btn{ 330, 318, 300, 54 }, "RESTART", 26, RGB(255, 170, 60));
     drawBtn(hdc, Btn{ 330, 386, 300, 54 }, "LEVEL LIST", 24, RGB(80, 170, 255));
+    drawBtn(hdc, Btn{ 330, 454, 300, 50 }, practice ? "PRACTICE MODE: ON" : "PRACTICE MODE: OFF", 22,
+            practice ? RGB(120, 255, 160) : RGB(150, 150, 170));
 }
 
 static void draw(HDC hdc) {
@@ -2468,6 +2540,7 @@ static void draw(HDC hdc) {
     } else if (state != ST_WIN) {
         drawObjects(hdc);
         drawParticles(hdc);
+        drawSpeedLines(hdc);
         drawPlayer(hdc);
     }
     if (state == ST_SELECT || state == ST_SHOP || state == ST_LAB) {
