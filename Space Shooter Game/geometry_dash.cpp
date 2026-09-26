@@ -429,7 +429,7 @@ static void pollMusic() {
     }
 }
 
-enum ObjType { OBJ_BLOCK, OBJ_SPIKE_UP, OBJ_SPIKE_DOWN, OBJ_ORB, OBJ_ORB_BLUE, OBJ_PAD, OBJ_PORTAL, OBJ_FINISH, OBJ_SHARD };
+enum ObjType { OBJ_BLOCK, OBJ_SPIKE_UP, OBJ_SPIKE_DOWN, OBJ_ORB, OBJ_ORB_BLUE, OBJ_PAD, OBJ_PORTAL, OBJ_FINISH, OBJ_SHARD, OBJ_GRAVPORTAL };
 struct Obj { ObjType t; double x, y, w, h; int mode; };
 
 static std::vector<Obj> objs;
@@ -472,6 +472,7 @@ static void addBlock(int c0, int r0, int c1, int r1) {
 }
 static void addOrb(int c, int r) { objs.push_back(Obj{ OBJ_ORB, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
 static void addOrbBlue(int c, int r) { objs.push_back(Obj{ OBJ_ORB_BLUE, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
+static void addGravPortal(int c) { objs.push_back(Obj{ OBJ_GRAVPORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, 0 }); }
 static void addPad(int c, int r) { objs.push_back(Obj{ OBJ_PAD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL / 2.0, 0 }); }
 static void addPortal(int mode, int c) { objs.push_back(Obj{ OBJ_PORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, mode }); }
 static void addShard(int c, int r) { objs.push_back(Obj{ OBJ_SHARD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
@@ -480,11 +481,11 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
     int pool[28];
     int n = 0;
     auto add = [&](int id) { if (id != lastAtom) pool[n++] = id; };
-    add(0); add(1); add(2); add(3); add(4); add(13); add(14); add(15); add(16);
+    add(0); add(1); add(2); add(3); add(4); add(13); add(14); add(15); add(16); add(22);
     if (tier >= 1) { add(5); add(17); }
-    if (tier >= 2) { add(6); add(9); add(12); add(18); add(19); }
+    if (tier >= 2) { add(6); add(9); add(12); add(18); add(19); add(23); }
     if (tier >= 3) { add(7); add(8); add(20); add(21); }
-    if (tier >= 4) { add(10); add(11); }
+    if (tier >= 4) { add(10); add(11); add(7); add(8); add(19); add(20); add(23); }
     int pick = pool[rndR(0, n - 1)];
     gLastAtom = pick;
     switch (pick) {
@@ -513,16 +514,35 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
     case 19: addSpikeD(s + 5, 9); addSpike(s + 9, ROWS - 1); addSpikeD(s + 15, 9); addSpike(s + 19, ROWS - 1); return s + 21;
     case 20: addPad(s + 3, ROWS - 1); addOrb(s + 6, 8); for (int i = 0; i < 5; i++) addSpike(s + 15 + i, ROWS - 1); return s + 21;
     case 21: addBlock(s, 0, s + 14, 1); addSpike(s + 4, ROWS - 1); addSpikeD(s + 9, 9); addSpike(s + 12, ROWS - 1); return s + 15;
+    case 22: addGravPortal(s + 4); addBlock(s + 7, 0, s + 30, 1); addGravPortal(s + 13);
+             addSpikeD(s + 17, 2); addSpikeD(s + 18, 2); addSpike(s + 22, ROWS - 1); return s + 26;
+    case 23: addBlock(s + 6, 0, s + 48, 1); addGravPortal(s + 3);
+             addSpikeD(s + 15, 2); addSpikeD(s + 16, 2); addGravPortal(s + 12);
+             addBlock(s + 24, 8, s + 25, ROWS - 1); addGravPortal(s + 18);
+             addSpikeD(s + 31, 2); addSpikeD(s + 32, 2); addGravPortal(s + 28);
+             addSpike(s + 37, ROWS - 1); addSpike(s + 38, ROWS - 1); return s + 43;
     }
     return s + 3;
 }
 
 static void emitSpecial(int s, int len, int mode, int tier) {
     addBlock(s, 0, s + len, 1);
-    if (mode != 0) addPortal(mode, s + 2);
+    if (mode != 0 && mode != 4) addPortal(mode, s + 2);
     int c = s + 9;
     int end = s + len - 7;
-    if (mode == 1) {
+    if (mode == 4) {
+        int p = s + 4;
+        while (p + 28 < s + len - 6) {
+            addGravPortal(p);
+            addSpikeD(p + 10, 2); addSpikeD(p + 11, 2);
+            addGravPortal(p + 8);
+            addGravPortal(p + 14);
+            addBlock(p + 20, 8, p + 21, ROWS - 1);
+            addSpikeD(p + 24, 2); addSpikeD(p + 25, 2);
+            addGravPortal(p + 22);
+            p += 28;
+        }
+    } else if (mode == 1) {
         int i = 0;
         while (c < end) {
             if (i % 2 == 0) { addSpike(c, ROWS - 1); if (tier >= 2 && rndR(0, 99) < 55) addSpike(c + 1, ROWS - 1); }
@@ -560,7 +580,7 @@ static void emitSpecial(int s, int len, int mode, int tier) {
             i++;
         }
     }
-    if (mode != 0) addPortal(0, s + len - 4);
+    if (mode != 0 && mode != 4) addPortal(0, s + len - 4);
 }
 
 static void genLevel(int idx) {
@@ -569,21 +589,22 @@ static void genLevel(int idx) {
     int tier = levelTier(idx);
     int len = 300 + idx * 13;
     if (len > 920) len = 920;
-    int gap = imax(3, 4 - tier / 2);
-    if (idx % 10 >= 7) gap = imax(3, gap - 1);
+    int gap = tier >= 5 ? 2 : imax(3, 4 - tier / 2);
+    if (idx % 10 >= 7) gap = imax(tier >= 5 ? 2 : 3, gap - 1);
     int cursor = 10;
     int lastSpecial = -200;
     while (cursor < len - 24) {
-        int modesAllowed[4];
+        int modesAllowed[5];
         int nm = 0;
         if (idx >= 3) modesAllowed[nm++] = 1;
         if (idx >= 8) modesAllowed[nm++] = 2;
         if (idx >= 12) modesAllowed[nm++] = 3;
         if (idx >= 16) modesAllowed[nm++] = 0;
-        bool wantSpecial = nm > 0 && (cursor - lastSpecial) > 26 && (cursor < len - 64) && (rndR(0, 99) < 55 + tier * 5);
+        if (idx >= 3) modesAllowed[nm++] = 4;
+        bool wantSpecial = nm > 0 && (cursor - lastSpecial) > (tier >= 5 ? 20 : 26) && (cursor < len - 64) && (rndR(0, 99) < 55 + tier * 5);
         if (wantSpecial) {
             int mode = modesAllowed[rndR(0, nm - 1)];
-            int slen = rndR(26, 46);
+            int slen = (mode == 4) ? rndR(46, 64) : rndR(26, 46);
             if (cursor + slen < len - 14) {
                 emitSpecial(cursor, slen, mode, tier);
                 if (rndR(0, 99) < 70) addShard(cursor + slen + 1, 9);
@@ -1128,6 +1149,16 @@ static void checkInteractions() {
         } else if (o.t == OBJ_PORTAL) {
             double cx = o.x + 20;
             if (fabs(pl.x - cx) < 26) changeMode(o.mode);
+        } else if (o.t == OBJ_GRAVPORTAL) {
+            double cx = o.x + 20;
+            if (fabs(pl.x - cx) < 26 && !trigUsed[i]) {
+                trigUsed[i] = 1;
+                pl.grav = -pl.grav;
+                pl.vy = -120 * pl.grav;
+                pl.onGround = false;
+                playSfx(SFX_FLIP);
+                spawnSpark(cx, pl.y, RGB(90, 160, 255));
+            }
         }
     }
     if (pl.x >= finishX) winGame();
@@ -2180,6 +2211,17 @@ static void drawObjects(HDC hdc) {
             fillEllipse(hdc, cx, cy, 4, 15, RGB(255, 255, 255));
             const char* letters[4] = { "C", "S", "B", "U" };
             drawTextC(hdc, letters[imin(o.mode, 3)], (int)cx - 4, (int)cy - 34, 16, col2);
+            break;
+        }
+        case OBJ_GRAVPORTAL: {
+            double cx = sx + 20, cy = FLOOR_Y - 56;
+            fillEllipse(hdc, cx, cy, 15, 52, RGB(16, 20, 36));
+            strokeEllipse(hdc, cx, cy, 15, 52, 4, RGB(80, 140, 255));
+            strokeEllipse(hdc, cx, cy, 9, 38, 2, RGB(160, 200, 255));
+            POINT up[3] = { {(int)cx, (int)(cy - 30)}, {(int)(cx - 7), (int)(cy - 16)}, {(int)(cx + 7), (int)(cy - 16)} };
+            POINT dn[3] = { {(int)cx, (int)(cy + 30)}, {(int)(cx - 7), (int)(cy + 16)}, {(int)(cx + 7), (int)(cy + 16)} };
+            fillPoly(hdc, up, 3, RGB(210, 230, 255), RGB(210, 230, 255), 1);
+            fillPoly(hdc, dn, 3, RGB(210, 230, 255), RGB(210, 230, 255), 1);
             break;
         }
         case OBJ_SHARD: {
