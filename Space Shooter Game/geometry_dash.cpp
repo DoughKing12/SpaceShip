@@ -477,13 +477,13 @@ static void addPortal(int mode, int c) { objs.push_back(Obj{ OBJ_PORTAL, (double
 static void addShard(int c, int r) { objs.push_back(Obj{ OBJ_SHARD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
 
 static int emitCubeAtom(int s, int tier, int lastAtom) {
-    int pool[20];
+    int pool[28];
     int n = 0;
     auto add = [&](int id) { if (id != lastAtom) pool[n++] = id; };
     add(0); add(1); add(2); add(3); add(4); add(13); add(14); add(15); add(16);
-    if (tier >= 1) { add(5); }
-    if (tier >= 2) { add(6); add(9); add(12); }
-    if (tier >= 3) { add(7); add(8); }
+    if (tier >= 1) { add(5); add(17); }
+    if (tier >= 2) { add(6); add(9); add(12); add(18); add(19); }
+    if (tier >= 3) { add(7); add(8); add(20); add(21); }
     if (tier >= 4) { add(10); add(11); }
     int pick = pool[rndR(0, n - 1)];
     gLastAtom = pick;
@@ -508,6 +508,11 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
     case 14: addSpike(s + 2, ROWS - 1); addSpike(s + 5, ROWS - 1); addSpike(s + 8, ROWS - 1); return s + 9;
     case 15: addBlock(s + 4, ROWS - 1, s + 7, ROWS - 1); addSpike(s + 5, ROWS - 2); return s + 8;
     case 16: addBlock(s + 4, ROWS - 1, s + 6, ROWS - 1); addBlock(s + 8, ROWS - 2, s + 10, ROWS - 1); return s + 11;
+    case 17: addPad(s + 3, ROWS - 1); for (int i = 0; i < 4; i++) addSpike(s + 11 + i, ROWS - 1); return s + 16;
+    case 18: addSpike(s + 4, ROWS - 1); addSpike(s + 5, ROWS - 1); addOrb(s + 9, 9); addSpike(s + 10, ROWS - 1); addSpike(s + 11, ROWS - 1); return s + 14;
+    case 19: addSpikeD(s + 5, 9); addSpike(s + 9, ROWS - 1); addSpikeD(s + 15, 9); addSpike(s + 19, ROWS - 1); return s + 21;
+    case 20: addPad(s + 3, ROWS - 1); addOrb(s + 6, 8); for (int i = 0; i < 5; i++) addSpike(s + 15 + i, ROWS - 1); return s + 21;
+    case 21: addBlock(s, 0, s + 14, 1); addSpike(s + 4, ROWS - 1); addSpikeD(s + 9, 9); addSpike(s + 12, ROWS - 1); return s + 15;
     }
     return s + 3;
 }
@@ -562,8 +567,8 @@ static void genLevel(int idx) {
     objs.clear();
     lvlSeed = 2654435761u ^ ((unsigned)idx * 40503u + 98765u);
     int tier = levelTier(idx);
-    int len = 170 + idx * 6;
-    if (len > 470) len = 470;
+    int len = 300 + idx * 13;
+    if (len > 920) len = 920;
     int gap = imax(3, 4 - tier / 2);
     if (idx % 10 >= 7) gap = imax(3, gap - 1);
     int cursor = 10;
@@ -571,14 +576,14 @@ static void genLevel(int idx) {
     while (cursor < len - 24) {
         int modesAllowed[4];
         int nm = 0;
-        if (idx >= 5) modesAllowed[nm++] = 1;
-        if (idx >= 10) modesAllowed[nm++] = 2;
-        if (idx >= 15) modesAllowed[nm++] = 3;
-        if (idx >= 20) modesAllowed[nm++] = 0;
-        bool wantSpecial = nm > 0 && (cursor - lastSpecial) > 36 && (cursor < len - 64) && (rndR(0, 99) < 44 + tier * 5);
+        if (idx >= 3) modesAllowed[nm++] = 1;
+        if (idx >= 8) modesAllowed[nm++] = 2;
+        if (idx >= 12) modesAllowed[nm++] = 3;
+        if (idx >= 16) modesAllowed[nm++] = 0;
+        bool wantSpecial = nm > 0 && (cursor - lastSpecial) > 26 && (cursor < len - 64) && (rndR(0, 99) < 55 + tier * 5);
         if (wantSpecial) {
             int mode = modesAllowed[rndR(0, nm - 1)];
-            int slen = rndR(30, 42);
+            int slen = rndR(26, 46);
             if (cursor + slen < len - 14) {
                 emitSpecial(cursor, slen, mode, tier);
                 if (rndR(0, 99) < 70) addShard(cursor + slen + 1, 9);
