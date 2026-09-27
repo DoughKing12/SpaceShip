@@ -586,9 +586,9 @@ static void emitSpecial(int s, int len, int mode, int tier) {
         while (c < end) {
             int kind = rndR(0, 2);
             if (i % 2 == 0) {
-                if (kind == 0) addBlock(c, 8, c + 1, ROWS - 1);
+                if (kind == 0) addBlock(c, ROWS - 2, c + 1, ROWS - 1);
                 else if (kind == 1) addSpike(c, ROWS - 1);
-                else { addBlock(c, 9, c + 2, ROWS - 1); addSpike(c + 1, ROWS - 1); }
+                else { addBlock(c, ROWS - 2, c + 1, ROWS - 1); addSpike(c + 1, ROWS - 3); }
             } else {
                 if (kind == 0) addBlock(c, 0, c + 1, 5);
                 else addSpikeD(c, 2);
