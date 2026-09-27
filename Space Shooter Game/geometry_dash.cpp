@@ -429,7 +429,7 @@ static void pollMusic() {
     }
 }
 
-enum ObjType { OBJ_BLOCK, OBJ_SPIKE_UP, OBJ_SPIKE_DOWN, OBJ_ORB, OBJ_ORB_BLUE, OBJ_PAD, OBJ_PORTAL, OBJ_FINISH, OBJ_SHARD, OBJ_GRAVPORTAL };
+enum ObjType { OBJ_BLOCK, OBJ_SPIKE_UP, OBJ_SPIKE_DOWN, OBJ_ORB, OBJ_ORB_BLUE, OBJ_PAD, OBJ_PORTAL, OBJ_FINISH, OBJ_SHARD, OBJ_GRAVPORTAL, OBJ_SAW };
 struct Obj { ObjType t; double x, y, w, h; int mode; };
 
 static std::vector<Obj> objs;
@@ -471,23 +471,26 @@ static void addBlock(int c0, int r0, int c1, int r1) {
     objs.push_back(Obj{ OBJ_BLOCK, (double)c0 * CELL, (double)r0 * CELL, (double)(c1 - c0 + 1) * CELL, (double)(r1 - r0 + 1) * CELL, 0 });
 }
 static void addOrb(int c, int r) { objs.push_back(Obj{ OBJ_ORB, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
+static void addOrbGreen(int c, int r) { objs.push_back(Obj{ OBJ_ORB, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 1 }); }
+static void addOrbRed(int c, int r) { objs.push_back(Obj{ OBJ_ORB, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 2 }); }
 static void addOrbBlue(int c, int r) { objs.push_back(Obj{ OBJ_ORB_BLUE, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
 static void addGravPortal(int c) { objs.push_back(Obj{ OBJ_GRAVPORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, 0 }); }
 static void addSpeedUp(int c) { objs.push_back(Obj{ OBJ_PORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, 6 }); }
+static void addSaw(int c, int r) { objs.push_back(Obj{ OBJ_SAW, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
 static void addPad(int c, int r) { objs.push_back(Obj{ OBJ_PAD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL / 2.0, 0 }); }
 static void addPadStrong(int c, int r) { objs.push_back(Obj{ OBJ_PAD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL / 2.0, 1 }); }
 static void addPortal(int mode, int c) { objs.push_back(Obj{ OBJ_PORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, mode }); }
 static void addShard(int c, int r, int big = 0) { objs.push_back(Obj{ OBJ_SHARD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, big }); }
 
 static int emitCubeAtom(int s, int tier, int lastAtom) {
-    int pool[28];
+    int pool[40];
     int n = 0;
     auto add = [&](int id) { if (id != lastAtom) pool[n++] = id; };
     add(0); add(1); add(2); add(3); add(4); add(13); add(14); add(15); add(16); add(22);
     if (tier >= 1) { add(5); add(17); }
-    if (tier >= 2) { add(6); add(9); add(12); add(18); add(19); add(23); }
-    if (tier >= 3) { add(7); add(8); add(20); add(21); add(25); }
-    if (tier >= 4) { add(10); add(11); add(7); add(8); add(19); add(20); add(23); }
+    if (tier >= 2) { add(6); add(9); add(12); add(18); add(19); add(23); add(27); }
+    if (tier >= 3) { add(7); add(8); add(20); add(21); add(25); add(28); add(30); }
+    if (tier >= 4) { add(10); add(11); add(7); add(8); add(19); add(20); add(23); add(26); add(29); add(31); }
     int pick = pool[rndR(0, n - 1)];
     gLastAtom = pick;
     switch (pick) {
@@ -524,6 +527,17 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
              addSpikeD(s + 31, 2); addSpikeD(s + 32, 2); addGravPortal(s + 28);
              addSpike(s + 37, ROWS - 1); addSpike(s + 38, ROWS - 1); return s + 43;
     case 25: addPadStrong(s + 3, ROWS - 1); addBlock(s + 10, ROWS - 3, s + 11, ROWS - 1); addSpike(s + 14, ROWS - 1); return s + 17;
+    case 26: addOrb(s + 5, 9); addGravPortal(s + 8); addBlock(s + 6, 0, s + 24, 1);
+             addGravPortal(s + 14); addSpikeD(s + 17, 2); addSpikeD(s + 18, 2);
+             addSpike(s + 22, ROWS - 1); return s + 27;
+    case 27: addOrb(s + 5, 9); addSpike(s + 8, ROWS - 1); addSpike(s + 9, ROWS - 1); addSpike(s + 10, ROWS - 1);
+             addPad(s + 14, ROWS - 1); addSpike(s + 17, ROWS - 1); return s + 20;
+    case 28: addSaw(s + 6, ROWS - 1); addSaw(s + 9, ROWS - 1); addSaw(s + 12, ROWS - 1); return s + 14;
+    case 29: addOrbRed(s + 6, 9); addSpike(s + 9, ROWS - 1); addSpike(s + 10, ROWS - 1); addSpike(s + 11, ROWS - 1);
+             addBlock(s + 14, ROWS - 2, s + 15, ROWS - 1); addSpike(s + 17, ROWS - 1); return s + 19;
+    case 30: addOrbGreen(s + 7, 9); addSaw(s + 12, ROWS - 1); addSaw(s + 15, ROWS - 1); return s + 18;
+    case 31: addPortal(7, s + 2); addSpike(s + 6, ROWS - 1); addSpike(s + 8, ROWS - 1);
+             addSpike(s + 11, ROWS - 1); addSpike(s + 13, ROWS - 1); addPortal(8, s + 17); return s + 20;
     }
     return s + 3;
 }
@@ -803,6 +817,7 @@ static double ckX = 0, ckY = 0, ckVy = 0, ckRot = 0, ckGrav = 1;
 static bool ckGround = true;
 static int ckMode = 0;
 static double ckPct = 0;
+static bool ckMirror = false;
 static std::vector<char> ckTrig;
 static double attemptT = 0;
 static double totalTime = 0;
@@ -811,6 +826,7 @@ static double pct = 0;
 static int curLevel = 0;
 static int shopSel = 0;
 static bool spacePrev = false;
+static bool g_mirror = false;
 static double camX = 0;
 static double gSpeed = 430.0;
 static int g_drawPal = 1;
@@ -1002,6 +1018,7 @@ static void startLevel(int idx) {
     trailT = 0;
     trigUsed.assign(objs.size(), 0);
     ckptSet = false;
+    g_mirror = false;
     startMusic(idx % 3);
     playSfx(SFX_CLICK);
 }
@@ -1020,6 +1037,7 @@ static void resetAttempt() {
     plSquash = 0;
     parts.clear();
     trigUsed.assign(objs.size(), 0);
+    g_mirror = false;
 }
 
 static void restoreCheckpoint() {
@@ -1031,6 +1049,7 @@ static void restoreCheckpoint() {
     plSquash = 0;
     parts.clear();
     trigUsed = ckTrig;
+    g_mirror = ckMirror;
 }
 
 static bool rectOverlap(double ax, double ay, double aw, double ah, double bx, double by, double bw, double bh) {
@@ -1096,6 +1115,12 @@ static void checkHazards() {
             if (hl < o.x + 28 && hr > o.x + 12 && ht < o.y + 38 && hb > o.y + 14) { die(); return; }
         } else if (o.t == OBJ_SPIKE_DOWN) {
             if (hl < o.x + 28 && hr > o.x + 12 && ht < o.y + 26 && hb > o.y + 2) { die(); return; }
+        } else if (o.t == OBJ_SAW) {
+            double cx = o.x + 20, cy = o.y + 20;
+            double nx = cx < pl.x - 10 ? pl.x - 10 : (cx > pl.x + 10 ? pl.x + 10 : cx);
+            double ny = cy < pl.y - 10 ? pl.y - 10 : (cy > pl.y + 10 ? pl.y + 10 : cy);
+            double dx = cx - nx, dy = cy - ny;
+            if (dx * dx + dy * dy < 15.0 * 15.0) { die(); return; }
         }
     }
 }
@@ -1123,9 +1148,11 @@ static void checkInteractions() {
             if (dx * dx + dy * dy < ORB_R * ORB_R && (jumpHeld || totalTime - lastJumpT < 0.16)) {
                 trigUsed[i] = 1;
                 if (o.t == OBJ_ORB) {
-                    pl.vy = -JUMP_V * pl.grav;
+                    double st = (o.mode == 1) ? 0.62 : (o.mode == 2) ? 1.35 : 1.0;
+                    pl.vy = -JUMP_V * st * pl.grav;
                     playSfx(SFX_ORB);
-                    spawnSpark(cx, cy, RGB(255, 225, 80));
+                    spawnSpark(cx, cy, o.mode == 1 ? RGB(90, 255, 130)
+                              : (o.mode == 2 ? RGB(255, 110, 110) : RGB(255, 225, 80)));
                 } else {
                     pl.grav = -pl.grav;
                     pl.vy = -120 * pl.grav;
@@ -1163,6 +1190,13 @@ static void checkInteractions() {
                     gSpeed = clampD(gSpeed + 25.0, 380.0, 560.0);
                     playSfx(SFX_PORTAL);
                     spawnSpark(cx, FLOOR_Y - 56, RGB(80, 255, 110));
+                }
+            } else if (o.mode == 7 || o.mode == 8) {
+                bool want = (o.mode == 7);
+                if (fabs(pl.x - cx) < 26 && g_mirror != want) {
+                    g_mirror = want;
+                    playSfx(SFX_PORTAL);
+                    spawnSpark(cx, FLOOR_Y - 56, RGB(200, 110, 255));
                 }
             } else if (fabs(pl.x - cx) < 26) changeMode(o.mode);
         } else if (o.t == OBJ_GRAVPORTAL) {
@@ -1466,7 +1500,7 @@ static void frameInput() {
             ckptSet = true;
             ckX = pl.x; ckY = pl.y; ckVy = pl.vy; ckRot = pl.rot;
             ckGrav = pl.grav; ckGround = pl.onGround; ckMode = pl.mode;
-            ckPct = pct; ckTrig = trigUsed;
+            ckPct = pct; ckTrig = trigUsed; ckMirror = g_mirror;
             playSfx(SFX_COIN);
             showToast("CHECKPOINT SAVED");
         }
@@ -2198,8 +2232,12 @@ static void drawObjects(HDC hdc) {
         case OBJ_ORB_BLUE: {
             double cx = sx + 20, cy = o.y + 20;
             double pw = 1.0 + 0.12 * sin(totalTime * 6.0);
-            COLORREF main = (o.t == OBJ_ORB) ? hslToColor(48, 100, 58) : hslToColor(215, 90, 60);
-            COLORREF lite = (o.t == OBJ_ORB) ? hslToColor(48, 100, 76) : hslToColor(215, 95, 75);
+            COLORREF main = (o.t == OBJ_ORB_BLUE) ? hslToColor(215, 90, 60)
+                : (o.mode == 1) ? hslToColor(140, 90, 52) : (o.mode == 2) ? hslToColor(4, 100, 55)
+                : hslToColor(48, 100, 58);
+            COLORREF lite = (o.t == OBJ_ORB_BLUE) ? hslToColor(215, 95, 75)
+                : (o.mode == 1) ? hslToColor(145, 95, 70) : (o.mode == 2) ? hslToColor(8, 100, 72)
+                : hslToColor(48, 100, 76);
             strokeCircle(hdc, cx, cy, 17 * pw, 4, main);
             strokeCircle(hdc, cx, cy, 24 * pw, 2, lite);
             fillCircle(hdc, cx, cy, 7, RGB(255, 255, 255));
@@ -2225,13 +2263,14 @@ static void drawObjects(HDC hdc) {
             else if (o.mode == MODE_BALL) { col = RGB(255, 120, 40); col2 = RGB(255, 210, 160); }
             else if (o.mode == MODE_UFO) { col = RGB(200, 90, 255); col2 = RGB(240, 190, 255); }
             else if (o.mode == 6) { col = RGB(80, 255, 110); col2 = RGB(200, 255, 215); }
+            else if (o.mode == 7 || o.mode == 8) { col = RGB(200, 110, 255); col2 = RGB(240, 200, 255); }
             else { col = RGB(120, 255, 140); col2 = RGB(210, 255, 220); }
             fillEllipse(hdc, cx, cy, 17, 52, RGB(18, 18, 30));
             strokeEllipse(hdc, cx, cy, 17, 52, 4, col);
             strokeEllipse(hdc, cx, cy, 10, 40, 2, col2);
             fillEllipse(hdc, cx, cy, 4, 15, RGB(255, 255, 255));
-            const char* letters[7] = { "C", "S", "B", "U", "G", "G", ">" };
-            drawTextC(hdc, letters[imin(o.mode, 6)], (int)cx - 4, (int)cy - 34, 16, col2);
+            const char* letters[9] = { "C", "S", "B", "U", "G", "G", "=", "M", "M" };
+            drawTextC(hdc, letters[imin(o.mode, 8)], (int)cx - 4, (int)cy - 34, 16, col2);
             break;
         }
         case OBJ_GRAVPORTAL: {
@@ -2243,6 +2282,24 @@ static void drawObjects(HDC hdc) {
             POINT dn[3] = { {(int)cx, (int)(cy + 30)}, {(int)(cx - 7), (int)(cy + 16)}, {(int)(cx + 7), (int)(cy + 16)} };
             fillPoly(hdc, up, 3, RGB(210, 230, 255), RGB(210, 230, 255), 1);
             fillPoly(hdc, dn, 3, RGB(210, 230, 255), RGB(210, 230, 255), 1);
+            break;
+        }
+        case OBJ_SAW: {
+            double scx = sx + 20, scy = o.y + 20;
+            double spin = totalTime * 7.0;
+            for (int k = 0; k < 8; k++) {
+                double a = spin + k * PI / 4.0;
+                POINT t3[3] = {
+                    { (int)(scx + cos(a) * 23.0), (int)(scy + sin(a) * 23.0) },
+                    { (int)(scx + cos(a - 0.24) * 14.0), (int)(scy + sin(a - 0.24) * 14.0) },
+                    { (int)(scx + cos(a + 0.24) * 14.0), (int)(scy + sin(a + 0.24) * 14.0) }
+                };
+                fillPoly(hdc, t3, 3, RGB(225, 228, 240), RGB(120, 125, 145), 1);
+            }
+            fillCircle(hdc, scx, scy, 15, RGB(175, 180, 200));
+            strokeCircle(hdc, scx, scy, 15, 2, RGB(90, 95, 115));
+            fillCircle(hdc, scx, scy, 6, RGB(70, 74, 92));
+            fillCircle(hdc, scx, scy, 3, RGB(255, 110, 110));
             break;
         }
         case OBJ_SHARD: {
@@ -2600,6 +2657,13 @@ static void draw(HDC hdc) {
         oy = (int)(cos(totalTime * 73.0) * shake * 12.0);
     }
     SetViewportOrgEx(hdc, ox, oy, NULL);
+    bool mirror = g_mirror && (state == ST_PLAY || state == ST_DEAD);
+    if (mirror) {
+        XFORM xf;
+        xf.eM11 = -1.0f; xf.eM12 = 0.0f; xf.eM21 = 0.0f; xf.eM22 = 1.0f;
+        xf.eDx = (FLOAT)WINDOW_W; xf.eDy = 0.0f;
+        SetWorldTransform(hdc, &xf);
+    }
     drawBackground(hdc);
     drawGround(hdc);
     if (state == ST_MENU || state == ST_SELECT || state == ST_SHOP || state == ST_LAB) {
@@ -2612,6 +2676,12 @@ static void draw(HDC hdc) {
     }
     if (state == ST_SELECT || state == ST_SHOP || state == ST_LAB) {
         for (int y = 0; y < WINDOW_H; y += 2) fillRect(hdc, 0, y, WINDOW_W, 1, RGB(10, 12, 24));
+    }
+    if (mirror) {
+        XFORM id;
+        id.eM11 = 1.0f; id.eM12 = 0.0f; id.eM21 = 0.0f; id.eM22 = 1.0f;
+        id.eDx = 0.0f; id.eDy = 0.0f;
+        SetWorldTransform(hdc, &id);
     }
     SetViewportOrgEx(hdc, 0, 0, NULL);
     if (state == ST_MENU) drawMenuUI(hdc);
