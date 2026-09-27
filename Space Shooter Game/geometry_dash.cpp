@@ -479,6 +479,7 @@ static void addSpeedUp(int c) { objs.push_back(Obj{ OBJ_PORTAL, (double)c * CELL
 static void addSaw(int c, int r) { objs.push_back(Obj{ OBJ_SAW, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, 0 }); }
 static void addPad(int c, int r) { objs.push_back(Obj{ OBJ_PAD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL / 2.0, 0 }); }
 static void addPadStrong(int c, int r) { objs.push_back(Obj{ OBJ_PAD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL / 2.0, 1 }); }
+static void addPadGrav(int c, int r) { objs.push_back(Obj{ OBJ_PAD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL / 2.0, 2 }); }
 static void addPortal(int mode, int c) { objs.push_back(Obj{ OBJ_PORTAL, (double)c * CELL, 0.0, (double)CELL, (double)FLOOR_Y, mode }); }
 static void addShard(int c, int r, int big = 0) { objs.push_back(Obj{ OBJ_SHARD, (double)c * CELL, (double)r * CELL, (double)CELL, (double)CELL, big }); }
 
@@ -488,7 +489,7 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
     auto add = [&](int id) { if (id != lastAtom) pool[n++] = id; };
     add(0); add(1); add(2); add(3); add(4); add(13); add(14); add(15); add(16); add(22);
     if (tier >= 1) { add(5); add(17); }
-    if (tier >= 2) { add(6); add(9); add(12); add(18); add(19); add(23); add(27); }
+    if (tier >= 2) { add(6); add(9); add(12); add(18); add(19); add(23); add(27); add(32); }
     if (tier >= 3) { add(7); add(8); add(20); add(21); add(25); add(28); add(30); }
     if (tier >= 4) { add(10); add(11); add(7); add(8); add(19); add(20); add(23); add(26); add(29); add(31); }
     int pick = pool[rndR(0, n - 1)];
@@ -538,6 +539,8 @@ static int emitCubeAtom(int s, int tier, int lastAtom) {
     case 30: addOrbGreen(s + 7, 9); addSaw(s + 12, ROWS - 1); addSaw(s + 15, ROWS - 1); return s + 18;
     case 31: addPortal(7, s + 2); addSpike(s + 6, ROWS - 1); addSpike(s + 8, ROWS - 1);
              addSpike(s + 11, ROWS - 1); addSpike(s + 13, ROWS - 1); addPortal(8, s + 17); return s + 20;
+    case 32: addPadGrav(s + 4, ROWS - 1); addSpikeD(s + 9, 2); addSpikeD(s + 10, 2);
+             addPadGrav(s + 14, 2); addSpike(s + 18, ROWS - 1); return s + 21;
     }
     return s + 3;
 }
@@ -564,6 +567,7 @@ static void emitSpecial(int s, int len, int mode, int tier) {
         while (c < end) {
             if (i % 2 == 0) { addSpike(c, ROWS - 1); if (tier >= 2 && rndR(0, 99) < 55) addSpike(c + 1, ROWS - 1); }
             else { addSpikeD(c, 2); if (tier >= 2 && rndR(0, 99) < 55) addSpikeD(c + 1, 2); }
+            if (tier >= 2 && rndR(0, 99) < 30) addSaw(c + (tier >= 4 ? 2 : 3), rndR(3, 7));
             c += (tier >= 4 ? 5 : tier >= 1 ? 6 : 7);
             i++;
         }
@@ -571,13 +575,15 @@ static void emitSpecial(int s, int len, int mode, int tier) {
         int i = 0;
         while (c < end) {
             if (i % 2 == 0) addBlock(c, ROWS - 3, c + 1, ROWS - 1);
+            else if (tier >= 2 && rndR(0, 99) < 35) addSaw(c, rndR(1, 3));
             else addBlock(c, 0, c + 1, 5);
             c += (tier >= 4 ? 5 : tier >= 1 ? 6 : 7);
             i++;
         }
     } else if (mode == 2) {
         while (c < end) {
-            addSpike(c, ROWS - 1);
+            if (tier >= 2 && rndR(0, 99) < 30) addSaw(c, ROWS - 1);
+            else addSpike(c, ROWS - 1);
             if (tier >= 2 && rndR(0, 99) < 55) addSpike(c + 1, ROWS - 1);
             c += (tier >= 4 ? 6 : tier >= 1 ? 7 : 9);
         }
@@ -637,6 +643,10 @@ static void genLevel(int idx) {
         else if (tier >= 1 && rndR(0, 99) < 18 && cursor < len - 30) addSpeedUp(end + gap / 2);
     }
     finishX = (double)(len - 6) * CELL;
+    for (size_t i = 0; i < objs.size(); i++) {
+        double oEnd = objs[i].x + objs[i].w + CELL * 2;
+        if (oEnd > finishX) finishX = oEnd;
+    }
     objs.push_back(Obj{ OBJ_FINISH, finishX, 0.0, (double)(CELL * 2), (double)FLOOR_Y, 0 });
 }
 
@@ -1165,10 +1175,18 @@ static void checkInteractions() {
             bool over = rectOverlap(pl.x - P_HALF, pl.y - P_HALF, P_HALF * 2, P_HALF * 2, o.x, o.y, o.w, o.h);
             if (over && !trigUsed[i]) {
                 trigUsed[i] = 1;
-                pl.vy = -JUMP_V * (o.mode == 1 ? 1.45 : 1.08) * pl.grav;
+                if (o.mode == 2) {
+                    int og = pl.grav;
+                    pl.grav = -pl.grav;
+                    pl.vy = -JUMP_V * 1.08 * og;
+                    playSfx(SFX_FLIP);
+                    spawnSpark(o.x + 20, o.y + o.h, RGB(255, 90, 220));
+                } else {
+                    pl.vy = -JUMP_V * (o.mode == 1 ? 1.45 : 1.08) * pl.grav;
+                    playSfx(SFX_ORB);
+                    spawnSpark(o.x + 20, o.y, RGB(255, 225, 80));
+                }
                 pl.onGround = false;
-                playSfx(SFX_ORB);
-                spawnSpark(o.x + 20, o.y, RGB(255, 225, 80));
             } else if (!over && trigUsed[i]) {
                 trigUsed[i] = 0;
             }
@@ -2249,8 +2267,8 @@ static void drawObjects(HDC hdc) {
         }
         case OBJ_PAD: {
             double cx = sx + 20, cy = o.y + o.h;
-            COLORREF pbase = (o.mode == 1) ? hslToColor(18, 100, 55) : hslToColor(48, 100, 55);
-            COLORREF ptop = (o.mode == 1) ? hslToColor(18, 100, 74) : hslToColor(48, 100, 72);
+            COLORREF pbase = (o.mode == 1) ? hslToColor(18, 100, 55) : (o.mode == 2) ? hslToColor(300, 90, 55) : hslToColor(48, 100, 55);
+            COLORREF ptop = (o.mode == 1) ? hslToColor(18, 100, 74) : (o.mode == 2) ? hslToColor(305, 95, 72) : hslToColor(48, 100, 72);
             fillEllipse(hdc, cx, cy, 20, 8, pbase);
             strokeEllipse(hdc, cx, cy, 20, 8, 2, RGB(255, 255, 255));
             fillEllipse(hdc, cx, cy - 4, 12, 5, ptop);
@@ -2322,6 +2340,14 @@ static void drawObjects(HDC hdc) {
             strokeRect(hdc, sx - 4, -6, 48, FLOOR_Y + 6, 3, RGB(255, 255, 255));
             break;
         }
+        }
+    }
+    if (practice && ckptSet && (state == ST_PLAY || state == ST_DEAD)) {
+        double fx = ckX - camX;
+        if (fx > -40 && fx < WINDOW_W + 40) {
+            fillRect(hdc, (int)fx, (int)(ckY - 34), 3, 52, RGB(240, 245, 255));
+            POINT fg[3] = { { (int)fx + 3, (int)(ckY - 34) }, { (int)fx + 3, (int)(ckY - 16) }, { (int)fx + 23, (int)(ckY - 25) } };
+            fillPoly(hdc, fg, 3, RGB(90, 255, 140), RGB(40, 180, 90), 1);
         }
     }
 }
